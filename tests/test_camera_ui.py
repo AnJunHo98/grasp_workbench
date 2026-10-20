@@ -553,7 +553,7 @@ def test_pose_start_uses_current_sam3_candidate_and_stop_preserves_other_slot(po
     assert window.receiver.pose_controls[-1].targets == ()
 
 
-def test_pose_mesh_choices_display_catalog_names_without_renaming_assets(pose_window):
+def test_pose_mesh_choices_display_catalog_names_and_resolve_mesh_paths(pose_window):
     catalog_path = Path(__file__).resolve().parents[1] / "assets" / "meshes" / "catalog.json"
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     expected = catalog["objects"] + catalog["table_leg"]

@@ -1,23 +1,49 @@
-# 기존 FFW mesh 보관본
+# Bundled Mesh Library
 
-`ffw_object_pose_system/assets`의 정식 물체 라이브러리에서 **복사**했다. 원본 파일은 변경하지 않았다.
+Copied from the object library in `ffw_object_pose_system/assets`. The source
+files and all mesh bytes are unchanged.
 
-- `ffw_objects/<asset_id>/object.glb`: 저장된 물체 21개의 원본 mesh.
-- `ffw_objects/<asset_id>/object.optimized.glb`: 같은 물체의 기존 최적화 mesh.
-- `table_leg/`: `Table001.obj`, `Leg001.obj`, `Leg001_colored.obj`.
-- `catalog.json`: 물체 이름·prompt·파일 상대 경로·기존 단위 정보·크기·SHA-256 목록.
+- `ffw_objects/<asset_name>/object.glb`: original meshes for 21 object assets.
+- `ffw_objects/<asset_name>/object.optimized.glb`: existing optimized meshes.
+- `table_leg/`: `Table001.obj`, `Leg001.obj`, and `Leg001_colored.obj`.
+- [catalog.json](catalog.json): English names and prompts, relative file paths,
+  source-declared units, file sizes, and SHA-256 hashes.
 
-총 **45개 mesh / 303,867,548 bytes (약 289.8 MiB)**다. GLB의 texture·buffer는 내부 포함이며,
-OBJ에는 외부 MTL·texture 참조가 없다. 복사 후 모든 mesh의 SHA-256이 원본과 일치함을 확인했다.
+## Names and descriptions
 
-좌표·색상·스케일은 변환하지 않았다. 기존 manifest의 `metre` / `mesh_scale_to_m: 1.0` 선언을
-목록에 보존했으며, 형상 정확도나 현재 카메라 기준 pose를 새로 검증했다는 뜻은 아니다.
-촬영 snapshot·과거 pose·로봇 설정·grasp cache·가중치·로그 중복본은 가져오지 않았다.
+Folder names use the English `display_name` in lowercase, with spaces replaced
+by underscores. Names and prompts describe the object type and appearance, not
+its position, orientation, or cropping in the original camera image.
 
-이 디렉터리는 현재 SAM3D cache와 별개다. FP UI의 A/B **이름으로 mesh 선택**에서 물체 21개와
-Table/Leg 3개를 선택할 수 있다. 선택하면 해당 저장 mesh 경로와 scale이 입력되며, Browse도 유지한다.
-표시 이름만 catalog에서 읽고 UUID 경로·mesh 파일 바이트는 바꾸지 않는다.
-원래 FFW application이나 개인 경로 없이 이 repo 안의 파일을 사용한다.
+The two black-bottle assets have the same available appearance description.
+`Black Bottle 1` and `Black Bottle 2` distinguish library entries only; their
+numbers do not encode scene position or assert physical object identity.
 
-- **테이프**: `ffw_objects/70b913cc9042458585b173a9a07bb111/object.optimized.glb`
-- **중앙의 작은 노란 동원참치 캔**: `ffw_objects/e76130be39c44e3282d47be1056760f5/object.optimized.glb`
+Examples:
+
+- **Tape Roll**: `ffw_objects/tape_roll/object.optimized.glb`
+- **Dongwon Tuna Can**: `ffw_objects/dongwon_tuna_can/object.optimized.glb`
+- **Cooking Pack Box**: `ffw_objects/cooking_pack_box/object.optimized.glb`
+
+## Geometry and provenance
+
+The library contains **45 meshes / 303,867,548 bytes (about 289.8 MiB)**.
+GLB textures and buffers are embedded; OBJ files have no external MTL or texture
+references. All mesh SHA-256 hashes match the source files.
+
+Coordinates, colors, scale, `asset_id`, and `object_frame` are preserved. The
+catalog retains the source declarations of `metre` and `mesh_scale_to_m: 1.0`;
+these do not establish measured shape accuracy or a current camera-frame pose.
+No snapshots, past poses, robot settings, grasp caches, model weights, or logs
+are included.
+
+## Usage
+
+This library is separate from the SAM3D inference cache. The A/B mesh selectors
+in the FoundationPose UI list the 21 object assets and 3 table/leg meshes.
+Selecting a name fills in the mesh path and scale; manual file browsing remains
+available. Assets resolve within this repository without the original FFW
+application or personal filesystem paths.
+
+Restart a running UI or reselect an asset after renaming folders. Previously
+saved local records with old file paths are not rewritten.

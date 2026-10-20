@@ -1,11 +1,44 @@
 """Persistent mesh identity/catalog storage without camera state or model imports."""
+import hashlib
 import json
+from pathlib import Path
+import re
 
 import numpy as np
 import pytest
 
 from grasp_workbench.assets import AssetStore
 from grasp_workbench.ipc.sam3d import MeshResult
+
+
+def test_bundled_meshes_use_asset_names_and_preserve_catalog_hashes(tmp_path):
+    catalog_path = Path(__file__).resolve().parents[1] / "assets" / "meshes" / "catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    store = AssetStore(tmp_path / "runtime", catalog_path=catalog_path)
+    for item in catalog["objects"]:
+        directory = Path("ffw_objects") / item["display_name"].lower().replace(" ", "_")
+        preferred = Path(item["preferred_mesh"])
+        assert preferred.parent == directory
+        assert store.get(item["asset_id"])["mesh_path"] == str(catalog_path.parent / preferred)
+        for mesh in item["meshes"].values():
+            path = catalog_path.parent / mesh["path"]
+            assert Path(mesh["path"]).parent == directory
+            assert path.stat().st_size == mesh["bytes"]
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == mesh["sha256"]
+
+
+def test_bundled_catalog_uses_english_without_scene_position_descriptions():
+    catalog_path = Path(__file__).resolve().parents[1] / "assets" / "meshes" / "catalog.json"
+    text = catalog_path.read_text(encoding="utf-8")
+    assert text.isascii()
+    catalog = json.loads(text)
+    names = [item["display_name"] for item in catalog["objects"] + catalog["table_leg"]]
+    assert len(names) == len(set(names))
+    for item in catalog["objects"]:
+        description = item["display_name"] + " " + item["prompt"]
+        assert not re.search(
+            r"\b(left|right|upper|lower|center|central|above|below|bottom|upright)\b"
+            r"|lying flat|on the table|image edge", description, re.IGNORECASE)
 
 
 @pytest.fixture
