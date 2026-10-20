@@ -1,0 +1,67 @@
+# Shared portable defaults. Put machine-specific paths in config.local.yaml.
+camera:
+  type: zed
+  serial: null
+  resolution: HD720
+  fps: 30
+
+ipc:
+  service: grasp_workbench/camera/rgbd
+
+ui:
+  enabled: true
+
+sam3:
+  enabled: false
+  python: null
+  checkpoint: null
+  device: cuda
+
+sam3d:
+  enabled: false
+  python: null
+  source_dir: null
+  config_path: null
+  output_dir: runs/meshes
+  seed: 42
+  depth_source: depth
+  texture_baking: false
+
+foundationpose:
+  enabled: false
+  python: null
+  source_dir: null
+  device: cuda:0
+  registration_iterations: 5
+  tracking_iterations: 1
+
+vlm:
+  enabled: false
+  python: null
+  backend: openai_api       # openai_api, codex_cli or anthropic_api
+  codex_executable: codex
+  model: gpt-6.1-sol
+  api_key_file: null        # API backends only; ignored by codex_cli
+  asset_dir: runs/assets
+  policy_catalog: null
+  session_dir: runs/tasks
+
+graspgenx:
+  enabled: false
+  python: null
+  source_dir: null
+  checkpoint_dir: null
+  assets_dir: null
+  gripper_id: franka_panda
+  output_dir: runs/grasps
+  settings: {}
+
+grasp_selection:
+  enabled: false
+  python: null
+  robot_config: null
+  settings: {}
+
+run:
+  frames: 0
+  timeout: 0

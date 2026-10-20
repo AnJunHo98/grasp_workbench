@@ -1,0 +1,18 @@
+[submodule "iceoryx2"]
+	path = third_party/iceoryx2
+	url = https://github.com/eclipse-iceoryx/iceoryx2.git
+[submodule "zed-python-api"]
+	path = third_party/zed-python-api
+	url = https://github.com/stereolabs/zed-python-api.git
+[submodule "third_party/sam3"]
+	path = third_party/sam3
+	url = https://github.com/facebookresearch/sam3.git
+[submodule "third_party/sam-3d-objects"]
+	path = third_party/sam-3d-objects
+	url = https://github.com/facebookresearch/sam-3d-objects.git
+[submodule "third_party/FoundationPose"]
+	path = third_party/FoundationPose
+	url = https://github.com/NVlabs/FoundationPose.git
+[submodule "third_party/GraspGenX"]
+	path = third_party/GraspGenX
+	url = https://github.com/NVlabs/GraspGenX.git

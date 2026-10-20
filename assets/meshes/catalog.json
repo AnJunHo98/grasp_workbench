@@ -1,0 +1,540 @@
+{
+  "schema_version": 1,
+  "source_library": "ffw_object_pose_system/assets/objects",
+  "source_table_leg": "ffw_object_pose_system/assets/meshes",
+  "notes": [
+    "Geometry-only archive: paths are relative to this catalog, not runtime bindings.",
+    "Original mesh bytes and source-declared object-local units are preserved without re-scaling or re-orienting.",
+    "No camera pose, robot context, snapshot, grasp cache or model checkpoint is imported.",
+    "Source-declared units do not establish measured geometric accuracy or a current camera pose."
+  ],
+  "objects": [
+    {
+      "asset_id": "01698ee157774002aa8ee45b9588878f",
+      "display_name": "왼쪽 상단 맛밤 봉지",
+      "prompt": "Purple upright roasted chestnut pouch with chestnut pictures and a white vertical label at the upper left.",
+      "object_frame": "01698ee157774002aa8ee45b9588878f_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/01698ee157774002aa8ee45b9588878f/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/01698ee157774002aa8ee45b9588878f/object.glb",
+          "bytes": 7845052,
+          "sha256": "5a1782f59d462e1937a460278e42b3a4b4f91a40cc2cd073316c5105d84809bd"
+        },
+        "optimized": {
+          "path": "ffw_objects/01698ee157774002aa8ee45b9588878f/object.optimized.glb",
+          "bytes": 2001076,
+          "sha256": "d5c0fc075acdc52d443db091fb7c2661fa18aac67ac376b6f9fcc8960e7b59b9"
+        }
+      },
+      "source_manifest_sha256": "7a33fb72d733b4a048a2153a10d165d1390a4322a96a3128d7529f155d23bc4d"
+    },
+    {
+      "asset_id": "021f44f24dab4382a00866dc2d6afcb8",
+      "display_name": "쿠킹팩 상자",
+      "prompt": "Tall upright green and blue rectangular COOKING PACK box on the left side of the white table.",
+      "object_frame": "021f44f24dab4382a00866dc2d6afcb8_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/021f44f24dab4382a00866dc2d6afcb8/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/021f44f24dab4382a00866dc2d6afcb8/object.glb",
+          "bytes": 9439848,
+          "sha256": "4b0a19eb4c2c89325926a739b81459d4e30977f68d741ffcd69d1e2cb2593075"
+        },
+        "optimized": {
+          "path": "ffw_objects/021f44f24dab4382a00866dc2d6afcb8/object.optimized.glb",
+          "bytes": 2001036,
+          "sha256": "675a10842ea04d5f7d379a0f4f20873aaef3b72a007e187270c05dcfd5229c8e"
+        }
+      },
+      "source_manifest_sha256": "01b449ba529821f174f6471b6f6dd47f1edf769c6a40fc806a43d0e3d47806df"
+    },
+    {
+      "asset_id": "0790ce7562564080be7bc2b1f9973c9e",
+      "display_name": "흰색 개밥 용기",
+      "prompt": "Small white oval dog food container with a white and orange printed lid, directly below the yellow tteokbokki cup.",
+      "object_frame": "0790ce7562564080be7bc2b1f9973c9e_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/0790ce7562564080be7bc2b1f9973c9e/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/0790ce7562564080be7bc2b1f9973c9e/object.glb",
+          "bytes": 11485488,
+          "sha256": "f3be76138e64d02ea8cac1730470555d34ce3027dfbaf1c116c9d41df6d91bff"
+        },
+        "optimized": {
+          "path": "ffw_objects/0790ce7562564080be7bc2b1f9973c9e/object.optimized.glb",
+          "bytes": 2001392,
+          "sha256": "535a26b54fcf483b4b4a74d510f5a06672a32c27c35d80b757c97abb228c7f43"
+        }
+      },
+      "source_manifest_sha256": "9fdd47b91923bb60b90b4328c317b11e41215bf6b09090b94c19c1f8d6ed1000"
+    },
+    {
+      "asset_id": "16dbc97f8ec44cdc83444b4b066d656e",
+      "display_name": "중앙 위쪽 노란 원통 떡볶이 컵",
+      "prompt": "Yellow cylindrical tteokbokki cup with a yellow lid at the upper center, immediately right of the red cup.",
+      "object_frame": "16dbc97f8ec44cdc83444b4b066d656e_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/16dbc97f8ec44cdc83444b4b066d656e/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/16dbc97f8ec44cdc83444b4b066d656e/object.glb",
+          "bytes": 20262480,
+          "sha256": "b7d926c65df3694f3b568968b87532aa93181af052937d92cfe572de6875d78f"
+        },
+        "optimized": {
+          "path": "ffw_objects/16dbc97f8ec44cdc83444b4b066d656e/object.optimized.glb",
+          "bytes": 2001184,
+          "sha256": "9b104f95bd3d9c1fa1c9a9ee72f77cd18751c0dd65d7b6fee0a35647468c70dc"
+        }
+      },
+      "source_manifest_sha256": "34ab76d49cc9f3e3f0bf16bec999e2b17b9a8373bb8773abe746c2e5fc30704e"
+    },
+    {
+      "asset_id": "35ff418d481546249435e2b8bff6a693",
+      "display_name": "원기둥 약통",
+      "prompt": "Upright cylindrical white medicine bottle with a white cap and dark brown label on the table.",
+      "object_frame": "35ff418d481546249435e2b8bff6a693_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/35ff418d481546249435e2b8bff6a693/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/35ff418d481546249435e2b8bff6a693/object.glb",
+          "bytes": 13809952,
+          "sha256": "f95a2969bb3799176fb3e1ed3f554c6ca088ce2be141e51cf291dab04e06dc5f"
+        },
+        "optimized": {
+          "path": "ffw_objects/35ff418d481546249435e2b8bff6a693/object.optimized.glb",
+          "bytes": 2001016,
+          "sha256": "359752543a87323a306de2359504fa80b01cc0bf64920472842e08069b134c8f"
+        }
+      },
+      "source_manifest_sha256": "cd6b435899a81c0e2a7ccffbb0ee1f7974a396fa340c6eb0bca8ccfff19fb4b2"
+    },
+    {
+      "asset_id": "37abe1f4dae645dda4dbc17e91cf583d",
+      "display_name": "왼쪽 땅콩믹스 봉지",
+      "prompt": "Yellow peanut mix pouch with peanut pictures, standing at the far left of the table.",
+      "object_frame": "37abe1f4dae645dda4dbc17e91cf583d_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/37abe1f4dae645dda4dbc17e91cf583d/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/37abe1f4dae645dda4dbc17e91cf583d/object.glb",
+          "bytes": 8962688,
+          "sha256": "2cb7f141d9f1f5d0f1354e66d30ddd60caf3f77e30da6c318e6f1ebce15cdd3d"
+        },
+        "optimized": {
+          "path": "ffw_objects/37abe1f4dae645dda4dbc17e91cf583d/object.optimized.glb",
+          "bytes": 1993352,
+          "sha256": "a4e0b0f9d2a5d23ba190c256251a35c668f46220122f76426efc0561a7f75569"
+        }
+      },
+      "source_manifest_sha256": "b1c838d4160108571810f5d3c1575f32ce6c21059b6ef362c423a90d9ebaae5e"
+    },
+    {
+      "asset_id": "4198ad7588054925a34ca0546db1e032",
+      "display_name": "하단 마스크 봉지",
+      "prompt": "Blue and white face mask pouch lying flat at the bottom center-left, partially cut off by the bottom image edge.",
+      "object_frame": "4198ad7588054925a34ca0546db1e032_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/4198ad7588054925a34ca0546db1e032/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/4198ad7588054925a34ca0546db1e032/object.glb",
+          "bytes": 7321068,
+          "sha256": "ac469126e5feaaa07bf5b38e118cd0f9d8a9c6f24c22704451f53e491266e763"
+        },
+        "optimized": {
+          "path": "ffw_objects/4198ad7588054925a34ca0546db1e032/object.optimized.glb",
+          "bytes": 2000340,
+          "sha256": "0dcc0a09911ab7c1526afc1fcea72f6961ff800a4c85a6e8e20b600cfc2bd7df"
+        }
+      },
+      "source_manifest_sha256": "37a8bd2b7a92ae4541670ab743665c9a54c282dfd3285c72fda556265f8931cd"
+    },
+    {
+      "asset_id": "485481ff46434c7d8cececdb46f53399",
+      "display_name": "가운데 위쪽 흰색 봉투",
+      "prompt": "Flat white rectangular pouch near the upper center-left, immediately left of the black jerky pouch.",
+      "object_frame": "485481ff46434c7d8cececdb46f53399_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/485481ff46434c7d8cececdb46f53399/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/485481ff46434c7d8cececdb46f53399/object.glb",
+          "bytes": 13439376,
+          "sha256": "b56fefcdef27acc398c1b8b0e1a8faf25050c94f59d4f41108238264b6300561"
+        },
+        "optimized": {
+          "path": "ffw_objects/485481ff46434c7d8cececdb46f53399/object.optimized.glb",
+          "bytes": 2001044,
+          "sha256": "a55837dfaa3f616dfe746563ba06e1a6ae711a3c975c07cb8d745fe4b46c43fb"
+        }
+      },
+      "source_manifest_sha256": "f932d81fa8dc5bb3073c67409f94a2eac9fe8320555589709f129368ddbd206d"
+    },
+    {
+      "asset_id": "5dbf2c011ccf4d56b3cffc38ce80147a",
+      "display_name": "검은 병",
+      "prompt": "Upright black bottle with black screw cap and gold label on the white table, left of the tray.",
+      "object_frame": "5dbf2c011ccf4d56b3cffc38ce80147a_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/5dbf2c011ccf4d56b3cffc38ce80147a/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/5dbf2c011ccf4d56b3cffc38ce80147a/object.glb",
+          "bytes": 8311532,
+          "sha256": "080bf6f91b1505623e47e48b051ae8e87cd77174d9860c9cb21208db0de54a56"
+        },
+        "optimized": {
+          "path": "ffw_objects/5dbf2c011ccf4d56b3cffc38ce80147a/object.optimized.glb",
+          "bytes": 2001040,
+          "sha256": "afe1938a197e865d739917b762dcd6d1d6de5d800d6006ad12a108fe310f9b9d"
+        }
+      },
+      "source_manifest_sha256": "e43b518ff2dd88410fbf9b434a29587061d623afc761c4cd4bfa197db23e42c4"
+    },
+    {
+      "asset_id": "6820c2f6664049d7b4b8875c3a79b357",
+      "display_name": "검은색 병",
+      "prompt": "Upright black bottle with a black screw cap and gold label on the right side of the white table.",
+      "object_frame": "6820c2f6664049d7b4b8875c3a79b357_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/6820c2f6664049d7b4b8875c3a79b357/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/6820c2f6664049d7b4b8875c3a79b357/object.glb",
+          "bytes": 8447932,
+          "sha256": "57e5f3bda656c1f92224c5ea0f0296da5b5f055b5d78d6e1ea59dc0a28df26ff"
+        },
+        "optimized": {
+          "path": "ffw_objects/6820c2f6664049d7b4b8875c3a79b357/object.optimized.glb",
+          "bytes": 2001076,
+          "sha256": "32c804be94e6a07beda5fa4581a33d887a5f8a3f281a565aafe4aedd4278230b"
+        }
+      },
+      "source_manifest_sha256": "a58ed76027bb68b4e39ef607c7c81a5171e090609ca826e2f55f8c532e161b88"
+    },
+    {
+      "asset_id": "70b913cc9042458585b173a9a07bb111",
+      "display_name": "테이프",
+      "prompt": "Beige tape roll with a blue inner rim, lying flat on the left side of the tray.",
+      "object_frame": "70b913cc9042458585b173a9a07bb111_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/70b913cc9042458585b173a9a07bb111/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/70b913cc9042458585b173a9a07bb111/object.glb",
+          "bytes": 18500772,
+          "sha256": "1ca488063f7f97ed35c4c48ced7e8b57fae9d21c208b5b206e8ee178b8fabd92"
+        },
+        "optimized": {
+          "path": "ffw_objects/70b913cc9042458585b173a9a07bb111/object.optimized.glb",
+          "bytes": 1998432,
+          "sha256": "e8ebeb60ef9af85f1f3c40cf7df818d36c5be4860a8b0fa396b1c9130a94d558"
+        }
+      },
+      "source_manifest_sha256": "46b1a4ce83194d6b580ec03d02724b45fa92a1ee95087504bdc3db8bd67d49cd"
+    },
+    {
+      "asset_id": "7e257b5eda3d4e82aa78e1f3ce27225b",
+      "display_name": "초코하임 박스",
+      "prompt": "Brown rectangular Choco Heim snack box with cream diagonal stripes and Korean lettering, to the right of the white tray.",
+      "object_frame": "7e257b5eda3d4e82aa78e1f3ce27225b_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/7e257b5eda3d4e82aa78e1f3ce27225b/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/7e257b5eda3d4e82aa78e1f3ce27225b/object.glb",
+          "bytes": 12088092,
+          "sha256": "4fdf415644a54660eb96feac1f339c35ba626399b5a5d01163b402134c2857a3"
+        },
+        "optimized": {
+          "path": "ffw_objects/7e257b5eda3d4e82aa78e1f3ce27225b/object.optimized.glb",
+          "bytes": 2001036,
+          "sha256": "969fe24e07096f1712df97e9ff09c2f1c5c8246be044b1de2085820520b603ac"
+        }
+      },
+      "source_manifest_sha256": "8363a74a84c3145702df125cc08ff53342f1259ba2e709db718a19f75e73dd9e"
+    },
+    {
+      "asset_id": "8d9c27ab6f6e4efab1eb1992adce60ad",
+      "display_name": "빨간 원통 떡볶이 컵",
+      "prompt": "Red cylindrical tteokbokki cup with an orange-red lid and white label at the upper center of the table.",
+      "object_frame": "8d9c27ab6f6e4efab1eb1992adce60ad_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/8d9c27ab6f6e4efab1eb1992adce60ad/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/8d9c27ab6f6e4efab1eb1992adce60ad/object.glb",
+          "bytes": 21511760,
+          "sha256": "759682e12afe89a37882e3453a02ea1c7808dd7ba4616067a8fe42cde125cea0"
+        },
+        "optimized": {
+          "path": "ffw_objects/8d9c27ab6f6e4efab1eb1992adce60ad/object.optimized.glb",
+          "bytes": 2000980,
+          "sha256": "661b82e834bd456547b96919e5c9e8d60a84a9d7929cf52f2c874a025a3664af"
+        }
+      },
+      "source_manifest_sha256": "0f53cccd5f269a9e95cf1a7d7d660c1e02a6b04d8b7e29d622375013c5ed51b8"
+    },
+    {
+      "asset_id": "9d30c33743664f3b993bec00b7c885b7",
+      "display_name": "버터링 박스",
+      "prompt": "Tall upright yellow Buttering cookie box with dark blue Korean lettering and ring-shaped cookie pictures",
+      "object_frame": "9d30c33743664f3b993bec00b7c885b7_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/9d30c33743664f3b993bec00b7c885b7/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/9d30c33743664f3b993bec00b7c885b7/object.glb",
+          "bytes": 7814584,
+          "sha256": "1183b5cd89c0da9dae6a57378c0953c1064f7466528abc79bbca5a85fa7fb457"
+        },
+        "optimized": {
+          "path": "ffw_objects/9d30c33743664f3b993bec00b7c885b7/object.optimized.glb",
+          "bytes": 2001016,
+          "sha256": "f075797c121aab52bdf08fadcca3f2e47ee9c33189eea7226e582d4cb2655c48"
+        }
+      },
+      "source_manifest_sha256": "f73313d56b1438582c2009701327dd32e041a1ef402ee4bfd6a5d5be1ec5f656"
+    },
+    {
+      "asset_id": "a86760eb0bcb4e38b20dbab1f20dccf8",
+      "display_name": "가운데 위쪽 검은 육포 봉지",
+      "prompt": "Black beef jerky pouch lying flat at the upper center, immediately left of the red cup.",
+      "object_frame": "a86760eb0bcb4e38b20dbab1f20dccf8_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/a86760eb0bcb4e38b20dbab1f20dccf8/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/a86760eb0bcb4e38b20dbab1f20dccf8/object.glb",
+          "bytes": 6451900,
+          "sha256": "9c3be33cad275a8df1c63956a40df6c0cdbf41937d09d23362dc743f8cefd0d5"
+        },
+        "optimized": {
+          "path": "ffw_objects/a86760eb0bcb4e38b20dbab1f20dccf8/object.optimized.glb",
+          "bytes": 2000088,
+          "sha256": "8561db1e8071fd5562a155c64811a7819ee6fb0c0efbfe0c347ed031fe03055d"
+        }
+      },
+      "source_manifest_sha256": "2bfdfaf63c4f862b307cf7621013a5fa107d52b6c040c879ba71c7e4170ba24d"
+    },
+    {
+      "asset_id": "b0b9690f4eba48bea40e7933d7c3a42c",
+      "display_name": "흰색 쟁반",
+      "prompt": "White rectangular perforated tray with rounded corners and two handle cutouts on the left.",
+      "object_frame": "b0b9690f4eba48bea40e7933d7c3a42c_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/b0b9690f4eba48bea40e7933d7c3a42c/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/b0b9690f4eba48bea40e7933d7c3a42c/object.glb",
+          "bytes": 5201596,
+          "sha256": "c4be01dbcd916ea0c9d85d6bf3da4cd24cf4fd2db27681964f9d739b5da02026"
+        },
+        "optimized": {
+          "path": "ffw_objects/b0b9690f4eba48bea40e7933d7c3a42c/object.optimized.glb",
+          "bytes": 1997304,
+          "sha256": "0ac2a71ebe55007b3e8b6d1ad8f861511671945a8a9eb045637df030937bb4b9"
+        }
+      },
+      "source_manifest_sha256": "413f172e5498d2708ca1557e6cd51c1de9920b350d848e2a360887788cca1531"
+    },
+    {
+      "asset_id": "c1e6a0c424494a9a8fc303026ba946a5",
+      "display_name": "회색 플라스틱 bin",
+      "prompt": "Large gray open-top rectangular plastic storage bin with ribbed sides and handle cutouts.",
+      "object_frame": "c1e6a0c424494a9a8fc303026ba946a5_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/c1e6a0c424494a9a8fc303026ba946a5/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/c1e6a0c424494a9a8fc303026ba946a5/object.glb",
+          "bytes": 18002236,
+          "sha256": "eb99094b67e0eae77f93cb5f36cd0d8ea5c3549760d6cfb2b2c3bbe1d26820fb"
+        },
+        "optimized": {
+          "path": "ffw_objects/c1e6a0c424494a9a8fc303026ba946a5/object.optimized.glb",
+          "bytes": 1998380,
+          "sha256": "7c6e584b085488180d60eb927a0939762209e513c91bdd116d9ef5ed2e2b482d"
+        }
+      },
+      "source_manifest_sha256": "a0ef6edc3f9e7e61b22fdfe6afd1767e44e56575901ad153f554139def799b62"
+    },
+    {
+      "asset_id": "ca758a43b19b41fd8f395c1a23df6cea",
+      "display_name": "하단 왼쪽 젤리 봉지",
+      "prompt": "Colorful pink and purple jelly candy pouch lying flat at the bottom left, partially cut off by the image edges.",
+      "object_frame": "ca758a43b19b41fd8f395c1a23df6cea_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/ca758a43b19b41fd8f395c1a23df6cea/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/ca758a43b19b41fd8f395c1a23df6cea/object.glb",
+          "bytes": 8192572,
+          "sha256": "5335a6a701a7bcf59d3832b6d38d47aa59a7c144ba7f28001e07ad581a66b3af"
+        },
+        "optimized": {
+          "path": "ffw_objects/ca758a43b19b41fd8f395c1a23df6cea/object.optimized.glb",
+          "bytes": 2001036,
+          "sha256": "38b328f114922ae54181b6515b22a10caba69ab9827e57d02c1a718e413a8a3a"
+        }
+      },
+      "source_manifest_sha256": "cc35c4b2c7d7176ee6b26008f1cb87afc79a24b9968d7a5ae85c01da5ecf906c"
+    },
+    {
+      "asset_id": "e20041ba31a6424a80210994d98767f0",
+      "display_name": "오른쪽 큰 캔디스틱 박스",
+      "prompt": "Large upright yellow and purple candy stick box with grape graphics on the right side of the table.",
+      "object_frame": "e20041ba31a6424a80210994d98767f0_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/e20041ba31a6424a80210994d98767f0/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/e20041ba31a6424a80210994d98767f0/object.glb",
+          "bytes": 27668892,
+          "sha256": "a24673f0c0a07e32a62d841df118337174aa0848c371f72f3f6f02479a653398"
+        },
+        "optimized": {
+          "path": "ffw_objects/e20041ba31a6424a80210994d98767f0/object.optimized.glb",
+          "bytes": 2000892,
+          "sha256": "ba8792352710dd54875918af3d00b3c722f5c09b61cf9b65d0ed70f2fbaa2e15"
+        }
+      },
+      "source_manifest_sha256": "7eb42d913147125052329b62d78b031249eb139a5b05b3c5feee4db07a835825"
+    },
+    {
+      "asset_id": "e76130be39c44e3282d47be1056760f5",
+      "display_name": "중앙의 작은 노란 동원참치 캔",
+      "prompt": "Small yellow cylindrical tuna can near the center, above and left of the other yellow tuna can.",
+      "object_frame": "e76130be39c44e3282d47be1056760f5_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/e76130be39c44e3282d47be1056760f5/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/e76130be39c44e3282d47be1056760f5/object.glb",
+          "bytes": 17410532,
+          "sha256": "69ff5b07341d5e141f9cd6975cc0002cc7cc73035c0c06ba471a65b821eed9d0"
+        },
+        "optimized": {
+          "path": "ffw_objects/e76130be39c44e3282d47be1056760f5/object.optimized.glb",
+          "bytes": 1995272,
+          "sha256": "a2b8676c5b33ec5ed8203103ffb68226284eb6d0bbd2e385da1a9d82b0269502"
+        }
+      },
+      "source_manifest_sha256": "084a7ce994c46969302963ea9c53b33cb4a19b14a215cd08549e5073ade70901"
+    },
+    {
+      "asset_id": "f72e2da6a1ca4b0689148aa71e9e3cf1",
+      "display_name": "검은색 쟁반",
+      "prompt": "Large black rectangular tray with raised edges and handle cutouts on the left side of the white table.",
+      "object_frame": "f72e2da6a1ca4b0689148aa71e9e3cf1_body",
+      "geometry_kind": "generated",
+      "length_unit": "metre",
+      "mesh_scale_to_m": 1.0,
+      "accuracy_measured": false,
+      "preferred_mesh": "ffw_objects/f72e2da6a1ca4b0689148aa71e9e3cf1/object.optimized.glb",
+      "meshes": {
+        "original": {
+          "path": "ffw_objects/f72e2da6a1ca4b0689148aa71e9e3cf1/object.glb",
+          "bytes": 6378064,
+          "sha256": "6602ba324e43b59e603f7be7a2c500aa91c89192e347f15dc40c5bde7f1270d7"
+        },
+        "optimized": {
+          "path": "ffw_objects/f72e2da6a1ca4b0689148aa71e9e3cf1/object.optimized.glb",
+          "bytes": 2001016,
+          "sha256": "2326c6b3ed42126d96264cd80960f9ff540e9188c5fd2dea7a5860ad575941c3"
+        }
+      },
+      "source_manifest_sha256": "281afeb2ddf814c637ee6a360fbf98a4121dcfe5eac6aebf6b98de367dcd7274"
+    }
+  ],
+  "table_leg": [
+    {
+      "path": "table_leg/Table001.obj",
+      "display_name": "테이블",
+      "bytes": 2141671,
+      "sha256": "e33ab7635592e87fba97f685705e19094841df461525d5647b6dc9f9154becf7",
+      "length_unit": "metre"
+    },
+    {
+      "path": "table_leg/Leg001.obj",
+      "display_name": "다리",
+      "bytes": 372043,
+      "sha256": "6b1b8067136a523d7e56c58519fbca1f4ebd985b2599e2100ca6e32cd8324f68",
+      "length_unit": "metre"
+    },
+    {
+      "path": "table_leg/Leg001_colored.obj",
+      "display_name": "다리 (컬러)",
+      "bytes": 809410,
+      "sha256": "3ad1fa5460685489361aaf8542cd758dbaaa36bafe8b5b0713873b322d2ea2c7",
+      "length_unit": "metre"
+    }
+  ]
+}

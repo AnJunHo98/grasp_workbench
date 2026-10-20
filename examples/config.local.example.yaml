@@ -1,0 +1,70 @@
+# Copy to the repository root as config.local.yaml, then edit only your settings.
+# Do not overwrite an existing private config.local.yaml. Never put key values here.
+# Paths are relative to the YAML file that defines them, after copying to the root.
+# All model workers are disabled. See README's stage table for true/false combinations.
+camera:
+  type: zed                  # zed / realsense; run always starts this worker
+  serial: null               # your camera serial, or SDK default
+  resolution: HD720
+  fps: 30
+
+ipc:
+  service: grasp_workbench/camera/rgbd
+
+ui:
+  enabled: true              # console-only false requires all model toggles false
+
+sam3:
+  enabled: false
+  python: null               # your model environment's Python, or current Python
+  checkpoint: null           # fill your checkpoint path before enabling
+  device: cuda
+
+sam3d:
+  enabled: false
+  python: null
+  source_dir: null            # default third_party/sam-3d-objects
+  config_path: null           # fill your installed pipeline.yaml before enabling
+  output_dir: runs/meshes
+  seed: 42
+  depth_source: depth         # depth / monocular
+  texture_baking: false
+
+foundationpose:
+  enabled: false
+  python: null
+  source_dir: null            # default third_party/FoundationPose
+  device: cuda:0
+  registration_iterations: 5
+  tracking_iterations: 1
+
+vlm:
+  enabled: false
+  python: null
+  backend: openai_api         # openai_api / codex_cli / anthropic_api
+  codex_executable: codex     # CLI backend only; installed by each user
+  model: gpt-6.1-sol          # set YOUR supported Claude model ID for anthropic_api
+  api_key_file: null          # API: own ignored key file, or provider environment variable
+  asset_dir: runs/assets
+  policy_catalog: null
+  session_dir: runs/tasks
+
+graspgenx:
+  enabled: false
+  python: null
+  source_dir: null            # default third_party/GraspGenX
+  checkpoint_dir: null        # your installed model weights
+  assets_dir: null            # your gripper descriptor directory
+  gripper_id: franka_panda
+  output_dir: runs/grasps
+  settings: {}
+
+grasp_selection:
+  enabled: false
+  python: null
+  robot_config: null          # model-only; own read-only robot adapter YAML for IK
+  settings: {}
+
+run:
+  frames: 0
+  timeout: 0

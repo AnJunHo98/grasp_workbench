@@ -1,0 +1,9 @@
+# Optional read-only FFW-SG2 example. Replace paths with your own runtime/model/calibration.
+# This example does not start a robot driver or publish robot commands.
+backend: ffw_sg2
+runtime_manifest: /path/to/runtime_manifest.json
+robot_asset_dir: /path/to/robot_model_assets/robots/ffw_sg2
+device: cuda:0
+calibration:
+  path: /path/to/camera_extrinsic.yaml
+  sensor_frame: zed_left_camera_optical_frame
