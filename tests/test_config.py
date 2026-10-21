@@ -20,6 +20,15 @@ def test_fixed_defaults_and_null_python(shared):
     assert config.load_run_config() == {
         "camera": "zed", "serial": None, "resolution": "HD720", "fps": 30,
         "service": "grasp_workbench/camera/rgbd", "ui": True, "sam3": False,
+        "recording": False, "recording_python": sys.executable,
+        "recording_output_dir": str(config.ROOT / "runs/datasets"), "recording_fps": 30,
+        "recording_source": "pose",
+        "aprilcube": False, "aprilcube_python": sys.executable,
+        "aprilcube_source_dir": str(config.ROOT / "third_party/aprilcube"),
+        "aprilcube_config_a": str(config.ROOT / "examples/aprilcube/cube_a.json"),
+        "aprilcube_config_b": str(config.ROOT / "examples/aprilcube/cube_b.json"),
+        "aprilcube_enable_filter": True, "aprilcube_overlay_alpha": 0.65,
+        "aprilcube_fast": True, "aprilcube_log_timing": False,
         "sam3_python": sys.executable, "sam3_checkpoint": None, "sam3_device": "cuda",
         "sam3d": False, "sam3d_python": sys.executable,
         "sam3d_source_dir": str(config.ROOT / "third_party/sam-3d-objects"),
@@ -42,6 +51,89 @@ def test_fixed_defaults_and_null_python(shared):
         "grasp_selection_robot_config": None, "grasp_selection_settings": {},
         "frames": 0, "timeout": 0.0,
     }
+
+
+def test_aprilcube_paths_filter_and_alpha_are_yaml_relative(shared):
+    shared.write_text("""
+aprilcube:
+  enabled: true
+  python: model-env/bin/python
+  source_dir: vendor/aprilcube
+  config_a: cubes/a.json
+  config_b: cubes/b.json
+  enable_filter: false
+  fast: true
+  log_timing: true
+  overlay_alpha: 0.4
+""", encoding="utf-8")
+    loaded = config.load_run_config(shared)
+    assert loaded["aprilcube"] is True
+    assert loaded["aprilcube_python"] == str(shared.parent / "model-env/bin/python")
+    assert loaded["aprilcube_source_dir"] == str(shared.parent / "vendor/aprilcube")
+    assert loaded["aprilcube_config_a"] == str(shared.parent / "cubes/a.json")
+    assert loaded["aprilcube_config_b"] == str(shared.parent / "cubes/b.json")
+    assert loaded["aprilcube_enable_filter"] is False
+    assert loaded["aprilcube_fast"] is True
+    assert loaded["aprilcube_log_timing"] is True
+    assert loaded["aprilcube_overlay_alpha"] == 0.4
+
+
+def test_aprilcube_partial_config_uses_portable_defaults_and_does_not_rewrite_yaml(shared):
+    contents = """
+ui: {enabled: false}
+aprilcube: {enabled: true, source_dir: null, python: null}
+sam3: {enabled: true}
+sam3d: {enabled: true}
+foundationpose: {enabled: true}
+vlm: {enabled: true}
+graspgenx: {enabled: true}
+grasp_selection: {enabled: true}
+"""
+    shared.write_text(contents, encoding="utf-8")
+    loaded = config.load_run_config(shared)
+    assert loaded["aprilcube"] is True and loaded["ui"] is True
+    assert loaded["aprilcube_python"] == sys.executable
+    assert loaded["aprilcube_source_dir"] == str(config.ROOT / "third_party/aprilcube")
+    assert loaded["aprilcube_config_a"] == str(config.ROOT / "examples/aprilcube/cube_a.json")
+    assert loaded["aprilcube_config_b"] == str(config.ROOT / "examples/aprilcube/cube_b.json")
+    for name in ("sam3", "sam3d", "foundationpose", "vlm", "graspgenx", "grasp_selection"):
+        assert loaded[name] is False
+    assert shared.read_text(encoding="utf-8") == contents
+
+    shared.with_name("config.local.yaml").write_text("aprilcube: {enabled: false}\n", encoding="utf-8")
+    loaded = config.load_run_config()
+    assert loaded["aprilcube"] is False and loaded["ui"] is False
+    for name in ("sam3", "sam3d", "foundationpose", "vlm", "graspgenx", "grasp_selection"):
+        assert loaded[name] is True
+    assert shared.read_text(encoding="utf-8") == contents
+
+
+def test_aprilcube_local_paths_and_bare_python_override_shared_values(shared):
+    shared.write_text("aprilcube: {config_a: shared/a.json, config_b: shared/b.json}\n", encoding="utf-8")
+    shared.with_name("config.local.yaml").write_text(
+        "aprilcube: {python: python3, config_a: local/a.json, enable_filter: false, "
+        "fast: true, log_timing: true, overlay_alpha: 0}\n",
+        encoding="utf-8")
+    loaded = config.load_run_config()
+    assert loaded["aprilcube_python"] == "python3"
+    assert loaded["aprilcube_config_a"] == str(shared.parent / "local/a.json")
+    assert loaded["aprilcube_config_b"] == str(shared.parent / "shared/b.json")
+    assert loaded["aprilcube_enable_filter"] is False
+    assert loaded["aprilcube_fast"] is True
+    assert loaded["aprilcube_log_timing"] is True
+    assert loaded["aprilcube_overlay_alpha"] == 0.0
+
+
+@pytest.mark.parametrize("options", [
+    "enabled: 1", "python: 3", "source_dir: []", "config_a: null", "config_b: ''",
+    "config_a: []", "enable_filter: 'false'", "enable_filter: null", "overlay_alpha: -1",
+    "overlay_alpha: 1.1", "overlay_alpha: .nan", "overlay_alpha: true", "overlay_alpha: null",
+    "fast: 'false'", "fast: null", "fast: 1", "log_timing: 'true'", "log_timing: null", "log_timing: 0",
+])
+def test_aprilcube_rejects_invalid_types_and_alpha(shared, options):
+    shared.write_text(f"aprilcube: {{{options}}}\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        config.load_run_config(shared)
 
 
 def test_local_partial_override_retains_shared_and_static_fields(shared):

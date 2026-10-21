@@ -41,8 +41,8 @@ def receive_candidates(window, *, count=1, sequence=7):
 
 def test_generate_and_start_buttons_follow_candidate_and_busy_state(window):
     for key in ("A", "B"):
-        assert window.pose_start_buttons[key].text() == "기존 mesh로 Start"
-        assert "생성 후 Start" in window.mesh_pose_buttons[key].text()
+        assert window.pose_start_buttons[key].text() == "추적 시작·재등록"
+        assert window.mesh_pose_buttons[key].text() == "Mesh 생성 후 추적"
         assert not window.mesh_pose_buttons[key].isEnabled()
     receive_candidates(window)
     assert all(button.isEnabled() for button in window.mesh_pose_buttons.values())

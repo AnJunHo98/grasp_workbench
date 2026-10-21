@@ -5,20 +5,26 @@ import time
 
 
 class LatestCameraReceiver(Thread):
-    def __init__(self, service, *, sam3=False, sam3d=False, foundationpose=False, vlm=False, graspgenx=False,
-                 grasp_selection=False, subscriber_factory=None,
+    def __init__(self, service, *, sam3=False, sam3d=False, foundationpose=False, aprilcube=False, vlm=False, graspgenx=False,
+                 grasp_selection=False, recording=False, subscriber_factory=None,
                  prompt_publisher_factory=None, result_subscriber_factory=None,
                  mesh_request_publisher_factory=None, mesh_result_subscriber_factory=None,
                  pose_control_publisher_factory=None, pose_result_subscriber_factory=None,
                  vlm_request_publisher_factory=None, vlm_result_subscriber_factory=None,
                  grasp_request_publisher_factory=None, grasp_result_subscriber_factory=None,
                  selection_request_publisher_factory=None, selection_result_subscriber_factory=None,
-                 refine_request_publisher_factory=None, refine_result_subscriber_factory=None):
+                 refine_request_publisher_factory=None, refine_result_subscriber_factory=None,
+                 aprilcube_control_publisher_factory=None, aprilcube_overlay_subscriber_factory=None,
+                 recording_control_publisher_factory=None, recording_status_subscriber_factory=None):
         super().__init__(name="camera-ui-receiver")
         self.service = service
         self._subscriber_factory = subscriber_factory
+        if aprilcube:
+            sam3 = sam3d = foundationpose = vlm = graspgenx = grasp_selection = False
         self.sam3, self.sam3d = sam3 or sam3d or foundationpose or vlm, sam3d
         self.foundationpose = foundationpose
+        self.aprilcube = aprilcube
+        self.recording = recording
         self.vlm = vlm
         self.graspgenx, self.grasp_selection = graspgenx or grasp_selection, grasp_selection
         self._prompt_publisher_factory = prompt_publisher_factory
@@ -35,6 +41,10 @@ class LatestCameraReceiver(Thread):
         self._selection_result_subscriber_factory = selection_result_subscriber_factory
         self._refine_request_publisher_factory = refine_request_publisher_factory
         self._refine_result_subscriber_factory = refine_result_subscriber_factory
+        self._aprilcube_control_publisher_factory = aprilcube_control_publisher_factory
+        self._aprilcube_overlay_subscriber_factory = aprilcube_overlay_subscriber_factory
+        self._recording_control_publisher_factory = recording_control_publisher_factory
+        self._recording_status_subscriber_factory = recording_status_subscriber_factory
         self._stop_requested, self._lock = Event(), Lock()
         self._latest = None
         self._sam3_latest, self._prompts, self._pending_prompts = None, None, None
@@ -42,6 +52,8 @@ class LatestCameraReceiver(Thread):
         self._mesh_previews = {}
         self._mesh_inflight = None
         self._pending_pose_control, self._pose_latest = None, None
+        self._pending_aprilcube_control, self._aprilcube_overlay_latest = None, None
+        self._pending_recording_control, self._recording_latest = None, None
         self._pending_vlm_request, self._vlm_latest = None, None
         self._grasp_queue, self._grasp_results = deque(), deque(maxlen=8)
         self._grasp_inflight = None
@@ -82,14 +94,23 @@ class LatestCameraReceiver(Thread):
                 endpoints.append(mesh_publisher)
                 mesh_subscriber = (self._mesh_result_subscriber_factory or MeshResultSubscriber)(result_service)
                 endpoints.append(mesh_subscriber)
-            if self.foundationpose:
+            if self.foundationpose or self.aprilcube:
                 from ..ipc.foundationpose import PoseControlPublisher, PoseResultSubscriber, services
 
                 control_service, result_service = services(self.service)
-                pose_publisher = (self._pose_control_publisher_factory or PoseControlPublisher)(control_service)
-                endpoints.append(pose_publisher)
+                if self.foundationpose:
+                    pose_publisher = (self._pose_control_publisher_factory or PoseControlPublisher)(control_service)
+                    endpoints.append(pose_publisher)
                 pose_subscriber = (self._pose_result_subscriber_factory or PoseResultSubscriber)(result_service)
                 endpoints.append(pose_subscriber)
+            if self.aprilcube:
+                from ..ipc.aprilcube import AprilCubeControlPublisher, AprilCubeOverlaySubscriber, services
+
+                control_service, overlay_service = services(self.service)
+                aprilcube_publisher = (self._aprilcube_control_publisher_factory or AprilCubeControlPublisher)(control_service)
+                endpoints.append(aprilcube_publisher)
+                aprilcube_subscriber = (self._aprilcube_overlay_subscriber_factory or AprilCubeOverlaySubscriber)(overlay_service)
+                endpoints.append(aprilcube_subscriber)
             if self.vlm:
                 from ..ipc.vlm import VlmRequestPublisher, VlmResultSubscriber, services
 
@@ -114,11 +135,29 @@ class LatestCameraReceiver(Thread):
                 endpoints.append(selection_publisher)
                 selection_subscriber = (self._selection_result_subscriber_factory or SelectionResultSubscriber)(result_service)
                 endpoints.append(selection_subscriber)
+            if self.recording:
+                from ..ipc.recording import RecordingControlPublisher, RecordingStatusSubscriber, services
+
+                control_service, status_service = services(self.service)
+                recording_publisher = (self._recording_control_publisher_factory or RecordingControlPublisher)(control_service)
+                endpoints.append(recording_publisher)
+                recording_subscriber = (self._recording_status_subscriber_factory or RecordingStatusSubscriber)(status_service)
+                endpoints.append(recording_subscriber)
             with self._lock:
                 self._ready = True
             refine_publisher = refine_subscriber = None
             fk_request_id = None
             while not self._stop_requested.is_set():
+                if self.recording:
+                    with self._lock:
+                        control, self._pending_recording_control = self._pending_recording_control, None
+                    if control is not None:
+                        recording_publisher.publish(control)
+                    recording_publisher.update_connections()
+                    status = recording_subscriber.receive_latest()
+                    if status is not None:
+                        with self._lock:
+                            self._recording_latest = status
                 if self.sam3:
                     with self._lock:
                         prompts, self._pending_prompts = self._pending_prompts, None
@@ -163,10 +202,21 @@ class LatestCameraReceiver(Thread):
                     if control is not None:
                         pose_publisher.publish(control)
                     pose_publisher.update_connections()
+                if self.foundationpose or self.aprilcube:
                     result = pose_subscriber.receive_latest()
                     if result is not None:
                         with self._lock:
                             self._pose_latest = result
+                if self.aprilcube:
+                    with self._lock:
+                        control, self._pending_aprilcube_control = self._pending_aprilcube_control, None
+                    if control is not None:
+                        aprilcube_publisher.publish(control)
+                    aprilcube_publisher.update_connections()
+                    overlay = aprilcube_subscriber.receive_latest()
+                    if overlay is not None:
+                        with self._lock:
+                            self._aprilcube_overlay_latest = overlay
                 if self.vlm:
                     with self._lock:
                         request, self._pending_vlm_request = self._pending_vlm_request, None
@@ -256,6 +306,24 @@ class LatestCameraReceiver(Thread):
     def set_pose_control(self, control):
         with self._lock:
             self._pending_pose_control = control
+
+    def send_aprilcube_control(self, control):
+        with self._lock:
+            self._pending_aprilcube_control = control
+
+    def send_recording_control(self, control):
+        with self._lock:
+            self._pending_recording_control = control
+
+    def take_recording_latest(self):
+        with self._lock:
+            latest, self._recording_latest = self._recording_latest, None
+            return latest
+
+    def take_aprilcube_overlay_latest(self):
+        with self._lock:
+            latest, self._aprilcube_overlay_latest = self._aprilcube_overlay_latest, None
+            return latest
 
     def submit_vlm(self, request):
         with self._lock:

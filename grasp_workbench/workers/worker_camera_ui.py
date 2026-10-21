@@ -20,12 +20,14 @@ def build_parser():
     parser.add_argument("--sam3d-depth-source", choices=("depth", "monocular"), default="depth")
     parser.add_argument("--sam3d-texture-baking", action="store_true")
     parser.add_argument("--foundationpose", action="store_true", help="A/B mesh registration and tracking in a separate worker")
+    parser.add_argument("--aprilcube", action="store_true", help="AprilCube pose/mesh overlay only; overrides all model flags")
     parser.add_argument("--vlm", action="store_true", help="Request object prompts from a separate VLM worker")
     parser.add_argument("--asset-dir", help="UI asset library directory")
     parser.add_argument("--policy-catalog", help="Local semantic policy catalog JSON file")
     parser.add_argument("--session-dir", help="UI task session directory")
     parser.add_argument("--graspgenx", action="store_true", help="Request object-local grasps from a separate worker")
     parser.add_argument("--grasp-selection", action="store_true", help="Select grasps and display optional robot-frame reachability")
+    parser.add_argument("--recording", action="store_true", help="Control a separate LeRobot recording worker")
     return parser
 
 
@@ -47,13 +49,14 @@ def main(argv=None):
     timer = QtCore.QTimer()
     window = None
     try:
-        options = {"sam3": True, "sam3d": True} if args.sam3d else {"sam3": True} if args.sam3 else {}
+        options = {"sam3": True} if args.sam3 else {}
         if args.sam3d:
-            options.update(sam3d_depth_source=args.sam3d_depth_source, sam3d_texture_baking=args.sam3d_texture_baking)
+            options.update(sam3d=True, sam3d_depth_source=args.sam3d_depth_source,
+                           sam3d_texture_baking=args.sam3d_texture_baking)
         if args.foundationpose:
-            options.update(sam3=True, foundationpose=True)
+            options["foundationpose"] = True
         if args.vlm:
-            options.update(sam3=True, vlm=True)
+            options["vlm"] = True
         if args.graspgenx:
             options["graspgenx"] = True
         if args.grasp_selection:
@@ -64,6 +67,10 @@ def main(argv=None):
             options["policy_catalog"] = args.policy_catalog
         if args.session_dir is not None:
             options["session_dir"] = args.session_dir
+        if args.aprilcube:
+            options = {"aprilcube": True}
+        if args.recording:
+            options["recording"] = True
         window = CameraWindow(args.service, args.frames, args.timeout, **options)
         timer.timeout.connect(lambda: window.close() if stopped.is_set() else None)
         timer.start(50)

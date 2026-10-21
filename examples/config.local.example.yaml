@@ -12,7 +12,25 @@ ipc:
   service: grasp_workbench/camera/rgbd
 
 ui:
-  enabled: true              # console-only false requires all model toggles false
+  enabled: true              # console-only false requires all model toggles and recording false
+
+recording:
+  enabled: false             # idle worker; start an episode from the Recording tab
+  python: null               # use .venv-recorder/bin/python for a separate optional LeRobot environment
+  output_dir: runs/datasets
+  fps: 30                   # nominal dataset rate; source frame IDs/timestamps are preserved
+  source: pose              # camera / pose; pose needs AprilCube or FoundationPose results
+
+aprilcube:
+  enabled: false             # true overrides all six model toggles; recording remains independently selectable
+  python: null
+  source_dir: null           # default third_party/aprilcube
+  config_a: examples/aprilcube/cube_a.json
+  config_b: examples/aprilcube/cube_b.json
+  enable_filter: true
+  fast: true                # faster marker detection; use false for subpixel corner refinement
+  log_timing: false         # separate pose/overlay worker processing and source-frame age logs
+  overlay_alpha: 0.65
 
 sam3:
   enabled: false

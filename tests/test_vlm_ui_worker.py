@@ -8,18 +8,20 @@ from grasp_workbench.workers.worker_camera_ui import build_parser, main
 
 
 @pytest.mark.parametrize("argv,options", [
-    (["--vlm"], {"sam3": True, "vlm": True}),
+    (["--vlm"], {"vlm": True}),
+    (["--sam3", "--vlm"], {"sam3": True, "vlm": True}),
+    (["--foundationpose"], {"foundationpose": True}),
     (["--vlm", "--asset-dir", "/example/assets"],
-     {"sam3": True, "vlm": True, "asset_dir": "/example/assets"}),
+     {"vlm": True, "asset_dir": "/example/assets"}),
     (["--vlm", "--sam3d", "--foundationpose"],
-     {"sam3": True, "sam3d": True, "sam3d_depth_source": "depth", "sam3d_texture_baking": False,
+     {"sam3d": True, "sam3d_depth_source": "depth", "sam3d_texture_baking": False,
       "foundationpose": True, "vlm": True}),
     (["--sam3d", "--sam3d-depth-source", "monocular", "--sam3d-texture-baking"],
-     {"sam3": True, "sam3d": True, "sam3d_depth_source": "monocular", "sam3d_texture_baking": True}),
+     {"sam3d": True, "sam3d_depth_source": "monocular", "sam3d_texture_baking": True}),
     (["--asset-dir", "/example/assets"], {"asset_dir": "/example/assets"}),
     (["--graspgenx"], {"graspgenx": True}),
     (["--vlm", "--policy-catalog", "/example/policies.json", "--session-dir", "/example/tasks"],
-     {"sam3": True, "vlm": True, "policy_catalog": "/example/policies.json", "session_dir": "/example/tasks"}),
+     {"vlm": True, "policy_catalog": "/example/policies.json", "session_dir": "/example/tasks"}),
 ])
 def test_ui_worker_passes_vlm_and_asset_options_without_loading_models_or_keys(monkeypatch, argv, options):
     calls = []

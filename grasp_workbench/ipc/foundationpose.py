@@ -40,6 +40,8 @@ class ObjectPose:
     camera_from_object: np.ndarray | None = None
     error: str | None = None
     visual_mismatch_count: int = 0
+    pose_source: str = "foundationpose"
+    diagnostics: dict | None = None
 
 
 @dataclass
@@ -158,6 +160,10 @@ def _pose_record(item):
         raise ValueError("Pose status/error must be strings")
     if type(item.visual_mismatch_count) is not int or item.visual_mismatch_count < 0:
         raise ValueError("Visual mismatch count must be a nonnegative integer")
+    if not isinstance(item.pose_source, str):
+        raise ValueError("Pose source must be a string")
+    if item.diagnostics is not None and not isinstance(item.diagnostics, dict):
+        raise ValueError("Pose diagnostics must be an object or null")
     pose = None
     if item.camera_from_object is not None:
         pose = np.asarray(item.camera_from_object)
@@ -165,7 +171,8 @@ def _pose_record(item):
             raise ValueError("Camera-from-object pose must be a numeric 4x4 matrix")
         pose = pose.tolist()
     return {**identity, "status": item.status, "camera_from_object": pose, "error": item.error,
-            "visual_mismatch_count": item.visual_mismatch_count}
+            "visual_mismatch_count": item.visual_mismatch_count, "pose_source": item.pose_source,
+            "diagnostics": item.diagnostics}
 
 
 def encode_result(result: PoseResult) -> bytes:
@@ -187,7 +194,8 @@ def decode_result(payload) -> PoseResult:
             pose = np.array(pose, dtype=np.float64)
         obj = ObjectPose(item["object_id"], item["session_id"], item["mesh_path"],
                          item.get("status"), pose, item.get("error"),
-                         item.get("visual_mismatch_count", 0))
+                         item.get("visual_mismatch_count", 0), item.get("pose_source", "foundationpose"),
+                         item.get("diagnostics"))
         _pose_record(obj)
         objects.append(obj)
     return PoseResult(frame, tuple(objects))

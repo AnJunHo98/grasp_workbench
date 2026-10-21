@@ -1,4 +1,4 @@
-"""Camera RGB, optional generated meshes and FoundationPose axes without model SDKs."""
+"""Camera RGB, optional generated meshes and pose displays without model SDKs."""
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -31,11 +31,12 @@ class RgbImageView(QtWidgets.QLabel):
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background: #15171a; color: #d8dee9")
 
-    def set_rgb(self, rgb):
+    def set_rgb(self, rgb, *, redraw=True):
         pixels = np.ascontiguousarray(rgb)
         self.image = QtGui.QImage(pixels.data, pixels.shape[1], pixels.shape[0], pixels.strides[0],
                                  QtGui.QImage.Format.Format_RGB888).copy()
-        self._draw_image()
+        if redraw:
+            self._draw_image()
 
     def _draw_image(self):
         if self.image is not None:
@@ -50,28 +51,46 @@ class RgbImageView(QtWidgets.QLabel):
 
 class CameraWindow(QtWidgets.QMainWindow):
     def __init__(self, service=DEFAULT_SERVICE, frames=0, timeout=0, *, sam3=False, sam3d=False,
-                 foundationpose=False, vlm=False, graspgenx=False, grasp_selection=False, asset_dir=None, policy_catalog=None,
+                 foundationpose=False, aprilcube=False, vlm=False, graspgenx=False, grasp_selection=False, recording=False, asset_dir=None, policy_catalog=None,
                  session_dir=None, receiver_factory=None, sam3d_depth_source="depth", sam3d_texture_baking=False):
         super().__init__()
         if receiver_factory is None:
             from .receiver import LatestCameraReceiver
 
             receiver_factory = LatestCameraReceiver
+        self.worker_enabled = {
+            "camera": True, "sam3": bool(sam3), "sam3d": bool(sam3d),
+            "foundationpose": bool(foundationpose), "graspgenx": bool(graspgenx),
+            "grasp_selection": bool(grasp_selection), "aprilcube": bool(aprilcube),
+            "recording": bool(recording),
+        }
+        if aprilcube:
+            sam3 = sam3d = foundationpose = vlm = graspgenx = grasp_selection = False
+            self.worker_enabled = {key: key in {"camera", "aprilcube"} or key == "recording" and recording
+                                   for key in self.worker_enabled}
         sam3 = sam3 or sam3d or foundationpose or vlm
         graspgenx = graspgenx or grasp_selection
         options = {"sam3": True, "sam3d": True} if sam3d else {"sam3": True} if sam3 else {}
         if foundationpose:
             options["foundationpose"] = True
+        if aprilcube:
+            options["aprilcube"] = True
         if vlm:
             options["vlm"] = True
         if graspgenx:
             options["graspgenx"] = True
         if grasp_selection:
             options["grasp_selection"] = True
+        if recording:
+            options["recording"] = True
         self.receiver = receiver_factory(service, **options)
         self.sam3, self.sam3d = sam3, sam3d
         self.sam3d_depth_source, self.sam3d_texture_baking = sam3d_depth_source, sam3d_texture_baking
         self.foundationpose = foundationpose
+        self.aprilcube = aprilcube
+        self.recording = recording
+        self._recording_request_id, self._recording_state = None, None
+        self._aprilcube_overlay = None
         self.vlm = vlm
         self.graspgenx = graspgenx
         self.grasp_selection = grasp_selection
@@ -111,144 +130,219 @@ class CameraWindow(QtWidgets.QMainWindow):
         self.exit_code, self.received_count = 0, 0
         self._closing, self._ready_logged = False, False
         self._started = time.monotonic()
-        self.setWindowTitle("Camera · iceoryx2 subscriber")
-        self.resize(1100, 650)
+        self.setWindowTitle("Grasp Workbench · iceoryx2")
+        self.resize(1440, 850)
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
         outer_layout = QtWidgets.QVBoxLayout(central)
-        controls = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(controls)
-        note = "카메라·SAM3는 별도 worker" if sam3 else "표시 전용 · 카메라 worker는 별도 프로세스"
-        layout.addWidget(QtWidgets.QLabel(f"iceoryx2: {service} · {note}"))
-        self.status = QtWidgets.QLabel("구독 연결 중 · 카메라 영상 대기")
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
+
+        self.vlm_header = QtWidgets.QWidget()
+        self.vlm_header.setObjectName("vlm-header")
+        header_layout = QtWidgets.QVBoxLayout(self.vlm_header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
         row = QtWidgets.QHBoxLayout()
-        for text, callback in (("현재 프레임 캡처", self.capture_snapshot), ("Snapshot 저장", self.save_snapshot),
-                               ("Snapshot 불러오기", self.load_snapshot), ("실시간 보기", self.show_live_camera)):
-            button = QtWidgets.QPushButton(text)
-            button.clicked.connect(lambda _checked=False, callback=callback: callback())
-            row.addWidget(button)
-        layout.addLayout(row)
+        row.addWidget(QtWidgets.QLabel("VLM"))
         if vlm:
-            row = QtWidgets.QHBoxLayout()
-            self.vlm_enabled = QtWidgets.QCheckBox("VLM 사용")
-            self.vlm_enabled.setChecked(True)
-            self.vlm_enabled.toggled.connect(self._vlm_mode_changed)
-            row.addWidget(self.vlm_enabled)
             self.vlm_instruction = QtWidgets.QLineEdit()
-            self.vlm_instruction.setPlaceholderText("찾을 물체 설명 · 비우면 보이는 물체 최대 2개")
+            self.vlm_instruction.setPlaceholderText("작업 지시문 · 비우면 보이는 물체 최대 2개")
             self.vlm_instruction.textEdited.connect(self._semantic_instruction_edited)
             row.addWidget(self.vlm_instruction, 1)
-            self.vlm_button = QtWidgets.QPushButton("VLM 인식 → Task 진행" if foundationpose else "VLM 인식 → prompt")
+            self.vlm_button = QtWidgets.QPushButton("인식·진행")
+            self.vlm_button.setToolTip("현재 RGB 한 장을 인식하고 활성 worker 범위에서 Task를 진행합니다")
             self.vlm_button.clicked.connect(self.start_vlm)
             self.vlm_button.setEnabled(False)
             row.addWidget(self.vlm_button)
-            layout.addLayout(row)
-            self.vlm_status = QtWidgets.QLabel("VLM · 버튼으로 현재 RGB 한 장 인식 · 카메라 대기")
-            self.vlm_status.setWordWrap(True)
-            layout.addWidget(self.vlm_status)
-            self.semantic_summary = QtWidgets.QLabel("Task / coordination · 결과 대기 · A/B=물체 slot, 팔 배정 아님")
-            self.semantic_summary.setWordWrap(True)
-            layout.addWidget(self.semantic_summary)
-            row = QtWidgets.QHBoxLayout()
-            details_button = QtWidgets.QToolButton()
-            details_button.setText("Task / 팔 / 제약 / policy 상세")
-            details_button.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-            details_button.setCheckable(True)
-            details_button.setArrowType(QtCore.Qt.ArrowType.RightArrow)
-            row.addWidget(details_button)
-            for text, callback in (("Session 저장", self.save_semantic_session), ("Session 불러오기", self.load_semantic_session),
-                                   ("실행 요청 export", self.export_semantic_request)):
-                button = QtWidgets.QPushButton(text)
-                button.clicked.connect(lambda _checked=False, callback=callback: callback())
-                row.addWidget(button)
-            layout.addLayout(row)
-            self.semantic_details = QtWidgets.QPlainTextEdit()
-            self.semantic_details.setReadOnly(True)
-            self.semantic_details.setMaximumHeight(170)
-            self.semantic_details.setVisible(False)
-            details_button.toggled.connect(self.semantic_details.setVisible)
-            details_button.toggled.connect(self._semantic_details_toggled)
-            details_button.toggled.connect(lambda checked: details_button.setArrowType(
-                QtCore.Qt.ArrowType.DownArrow if checked else QtCore.Qt.ArrowType.RightArrow))
-            layout.addWidget(self.semantic_details)
+        else:
+            instruction = QtWidgets.QLineEdit()
+            instruction.setPlaceholderText("AprilCube 모드 · VLM 사용 안 함" if aprilcube else "vlm.enabled: false · YAML에서 설정")
+            instruction.setEnabled(False)
+            row.addWidget(instruction, 1)
+            button = QtWidgets.QPushButton("인식·진행")
+            button.setEnabled(False)
+            row.addWidget(button)
+        header_layout.addLayout(row)
+        if vlm:
+            self.vlm_status = self._wrapped_label("VLM · 버튼으로 현재 RGB 한 장 인식 · 카메라 대기")
+            header_layout.addWidget(self.vlm_status)
         if foundationpose or vlm:
+            self.task_details_button, self.task_details = self._fold_section(
+                header_layout, "Task / 팔 / 제약 / policy 상세")
+            task_layout = QtWidgets.QVBoxLayout(self.task_details)
+            task_layout.setContentsMargins(8, 0, 8, 0)
+            if vlm:
+                self.vlm_enabled = QtWidgets.QCheckBox("VLM 요청 사용 · worker 실행 설정은 YAML")
+                self.vlm_enabled.setChecked(True)
+                self.vlm_enabled.toggled.connect(self._vlm_mode_changed)
+                task_layout.addWidget(self.vlm_enabled)
+                self.semantic_summary = self._wrapped_label("Task / coordination · 결과 대기 · A/B=물체 slot, 팔 배정 아님")
+                header_layout.insertWidget(2, self.semantic_summary)
+                self.semantic_details = QtWidgets.QPlainTextEdit()
+                self.semantic_details.setReadOnly(True)
+                self.semantic_details.setMaximumHeight(130)
+                task_layout.addWidget(self.semantic_details)
+                self.task_details_button.toggled.connect(self._semantic_details_toggled)
             row = QtWidgets.QHBoxLayout()
             self.source_role_input, self.target_role_input = QtWidgets.QComboBox(), QtWidgets.QComboBox()
             for title, combo in (("Source", self.source_role_input), ("Target", self.target_role_input)):
                 row.addWidget(QtWidgets.QLabel(title))
                 combo.addItem("미선택", None)
                 combo.currentIndexChanged.connect(self._task_roles_changed)
+                combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+                combo.setMinimumContentsLength(12)
                 row.addWidget(combo, 1)
-            self.task_button = QtWidgets.QPushButton("Pose · Grasp 진행")
+            self.task_button = QtWidgets.QPushButton("선택한 역할로 진행")
             self.task_button.clicked.connect(self.start_task_pipeline)
             row.addWidget(self.task_button)
-            layout.addLayout(row)
-            self.task_status = QtWidgets.QLabel("수동 역할 선택 또는 VLM 분석 · 역할과 팔 배정은 별개")
-            self.task_status.setWordWrap(True)
-            layout.addWidget(self.task_status)
+            task_layout.addLayout(row)
+            self.task_status = self._wrapped_label("수동 역할 선택 또는 VLM 분석 · 역할과 팔 배정은 별개")
+            task_layout.addWidget(self.task_status)
+        outer_layout.addWidget(self.vlm_header)
+
+        self.worker_tabs = QtWidgets.QListWidget()
+        self.worker_tabs.setObjectName("worker-tabs")
+        self.worker_tabs.setFixedWidth(128)
+        self.worker_tabs.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.worker_stack = QtWidgets.QStackedWidget()
+        self.worker_stack.setObjectName("worker-stack")
+        self.worker_pages, self.worker_page_contents, worker_layouts = {}, {}, {}
+        worker_titles = {"camera": "Camera", "sam3": "SAM3", "sam3d": "SAM3D",
+                         "foundationpose": "FoundationPose", "graspgenx": "GraspGenX",
+                         "grasp_selection": "Grasp Selection", "aprilcube": "AprilCube",
+                         "recording": "Recording"}
+        for key, title in worker_titles.items():
+            enabled = self.worker_enabled[key]
+            item = QtWidgets.QListWidgetItem(f"{title}\n{'ON' if enabled else 'OFF'}")
+            item.setData(QtCore.Qt.ItemDataRole.UserRole, key)
+            item.setSizeHint(QtCore.QSize(120, 48))
+            self.worker_tabs.addItem(item)
+            scroll = QtWidgets.QScrollArea()
+            scroll.setObjectName(f"worker-page-{key}")
+            scroll.setWidgetResizable(True)
+            scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            page = QtWidgets.QWidget()
+            page_layout = QtWidgets.QVBoxLayout(page)
+            page_layout.setContentsMargins(8, 8, 8, 8)
+            page_layout.addWidget(self._wrapped_label(f"{title} · {'ON' if enabled else 'OFF'}"))
+            if not enabled:
+                reason = ("AprilCube 모드에서는 이 worker를 실행하지 않습니다." if aprilcube and key != "recording" else
+                          f"{key}.enabled: false · YAML에서 worker를 선택하세요.")
+                page_layout.addWidget(self._wrapped_label(reason))
+            content = QtWidgets.QWidget()
+            content.setEnabled(enabled)
+            content_layout = QtWidgets.QVBoxLayout(content)
+            content_layout.setContentsMargins(0, 0, 0, 0)
+            page_layout.addWidget(content)
+            page_layout.addStretch()
+            scroll.setWidget(page)
+            self.worker_stack.addWidget(scroll)
+            self.worker_pages[key], self.worker_page_contents[key] = scroll, content
+            worker_layouts[key] = content_layout
+        self.worker_tabs.currentRowChanged.connect(self.worker_stack.setCurrentIndex)
+        sidebar = QtWidgets.QWidget()
+        sidebar.setObjectName("worker-sidebar")
+        sidebar.setMinimumWidth(370)
+        sidebar.setMaximumWidth(460)
+        sidebar_layout = QtWidgets.QHBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(4)
+        sidebar_layout.addWidget(self.worker_tabs)
+        sidebar_layout.addWidget(self.worker_stack, 1)
+        body = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        body.addWidget(sidebar)
+        outer_layout.addWidget(body, 1)
+
+        camera_layout = worker_layouts["camera"]
+        camera_layout.addWidget(self._wrapped_label(f"iceoryx2: {service}"))
+        self.camera_info = self._wrapped_label("카메라 영상 대기 · 수신 metadata에서 장치·해상도 정보를 표시합니다")
+        camera_layout.addWidget(self.camera_info)
+        camera_layout.addWidget(self._wrapped_label("카메라는 별도 worker에서 자동 연결합니다. 장치와 해상도는 YAML에서 설정합니다."))
+        if recording:
+            recording_layout = worker_layouts["recording"]
+            recording_layout.addWidget(self._wrapped_label("LeRobot dataset · 원본 RGB-D / frame metadata / A/B pose"))
+            self.recording_buttons = {}
+            for action, title in (("start", "Start Recording"), ("save", "Save Episode"), ("discard", "Discard Episode")):
+                button = QtWidgets.QPushButton(title)
+                button.setEnabled(False)
+                button.clicked.connect(lambda _checked=False, action=action: self.send_recording_control(action))
+                recording_layout.addWidget(button)
+                self.recording_buttons[action] = button
+            self.recording_status = self._wrapped_label("Recording · worker 연결 대기")
+            self.recording_counts = self._wrapped_label("Episode 0 · 0 frames · Total 0 frames")
+            self.recording_output = self._wrapped_label("Output · worker 설정 확인 중")
+            self.recording_output.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+            for label in (self.recording_status, self.recording_counts, self.recording_output):
+                recording_layout.addWidget(label)
+        self.live_camera_button = QtWidgets.QPushButton("실시간으로 돌아가기")
+        self.live_camera_button.setObjectName("live-camera-button")
+        self.live_camera_button.setVisible(False)
+        self.live_camera_button.clicked.connect(self.show_live_camera)
+        outer_layout.insertWidget(1, self.live_camera_button)
+
         if sam3:
-            row = QtWidgets.QHBoxLayout()
+            layout = worker_layouts["sam3"]
             self.prompt_inputs = {}
-            for object_id, color, example in (("A", "#39d98a", "cell phone"), ("B", "#ffb454", "orange ball")):
-                label = QtWidgets.QLabel(object_id)
-                label.setStyleSheet(f"color: {color}; font-weight: bold")
-                row.addWidget(label)
+            sam3_slots = {}
+            for key, example in (("A", "cell phone"), ("B", "orange ball")):
+                slot = self._slot_panel(layout, key)
+                sam3_slots[key] = slot
                 field = QtWidgets.QLineEdit()
                 field.setPlaceholderText(f"{example} · 비우면 제외")
-                self.prompt_inputs[object_id] = field
+                self.prompt_inputs[key] = field
                 if vlm:
-                    field.textEdited.connect(lambda _text, key=object_id: self._mark_semantic_bindings_stale("prompt 편집", (key,)))
-                row.addWidget(field)
-            for text, callback in (("Apply", self.apply_prompts), ("Stop", lambda: self._set_prompts(()))):
-                button = QtWidgets.QPushButton(text)
-                button.clicked.connect(callback)
-                row.addWidget(button)
-            layout.addLayout(row)
-            self.prompt_hint = QtWidgets.QLabel("입력 문구를 SAM3에 그대로 전달 · 자동 번역 없음 · 영어 예: cell phone / orange ball")
+                    field.textEdited.connect(lambda _text, key=key: self._mark_semantic_bindings_stale("prompt 편집", (key,)))
+                slot.addWidget(QtWidgets.QLabel("Prompt"))
+                slot.addWidget(field)
+            self.sam3_apply_button = QtWidgets.QPushButton("적용·분할 시작")
+            self.sam3_apply_button.clicked.connect(self.apply_prompts)
+            layout.addWidget(self.sam3_apply_button)
+            self.sam3_stop_button = QtWidgets.QPushButton("분할 중지")
+            self.sam3_stop_button.clicked.connect(lambda: self._set_prompts(()))
+            layout.addWidget(self.sam3_stop_button)
+            self.prompt_hint = self._wrapped_label("입력 문구를 SAM3에 그대로 전달 · 자동 번역 없음 · 영어 예: cell phone / orange ball")
             layout.addWidget(self.prompt_hint)
-            self.sam3_status = QtWidgets.QLabel("SAM3 중지 · A/B는 prompt slot이며 지속 추적 ID가 아닙니다")
-            self.sam3_status.setWordWrap(True)
+            self.sam3_status = self._wrapped_label("SAM3 중지 · A/B는 prompt slot이며 지속 추적 ID가 아닙니다")
             layout.addWidget(self.sam3_status)
             self._set_prompts(())
-        if sam3d or foundationpose:
-            row = QtWidgets.QHBoxLayout()
             self.candidate_inputs, self.mesh_buttons = {}, {}
-            for key in ("A", "B"):
+            for key, slot in sam3_slots.items():
                 combo = QtWidgets.QComboBox()
                 combo.addItem(f"{key}: SAM3 후보 대기", None)
+                combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+                combo.setMinimumContentsLength(12)
                 if sam3d:
                     combo.currentIndexChanged.connect(lambda _index, key=key: self._select_mesh_candidate(key))
-                self.candidate_inputs[key] = combo
                 if vlm:
                     combo.activated.connect(lambda _index, key=key: self._mark_semantic_bindings_stale("SAM3 후보 변경", (key,)))
-                row.addWidget(combo, 1)
-                refine = QtWidgets.QPushButton(f"{key} · mask 보정")
+                self.candidate_inputs[key] = combo
+                slot.addWidget(combo)
+                refine = QtWidgets.QPushButton("Mask 보정")
                 refine.clicked.connect(lambda _checked=False, key=key: self.edit_mask(key))
-                row.addWidget(refine)
-                if sam3d:
-                    button = QtWidgets.QPushButton(f"{key} · Generate mesh")
-                    button.setEnabled(False)
-                    button.clicked.connect(lambda _checked=False, key=key: self.generate_mesh(key))
-                    self.mesh_buttons[key] = button
-                    row.addWidget(button)
-                    self.prompt_inputs[key].textChanged.connect(lambda _text, key=key: self._mesh_prompt_edited(key))
-            if sam3d:
-                self.mesh_object_input = QtWidgets.QComboBox()
-                self.mesh_object_input.addItems(("A mesh", "B mesh"))
-                self.mesh_object_input.currentIndexChanged.connect(self._plot_selected_mesh)
-                row.addWidget(self.mesh_object_input)
-            layout.addLayout(row)
+                slot.addWidget(refine)
         if sam3d:
-            self.mesh_options_label = QtWidgets.QLabel(
+            layout = worker_layouts["sam3d"]
+            for key in ("A", "B"):
+                slot = self._slot_panel(layout, key)
+                slot.addWidget(self._wrapped_label("SAM3 탭에서 mask 후보를 선택하세요."))
+                button = QtWidgets.QPushButton("Mesh 생성")
+                button.setEnabled(False)
+                button.clicked.connect(lambda _checked=False, key=key: self.generate_mesh(key))
+                self.mesh_buttons[key] = button
+                slot.addWidget(button)
+                self.prompt_inputs[key].textChanged.connect(lambda _text, key=key: self._mesh_prompt_edited(key))
+            self.mesh_object_input = QtWidgets.QComboBox()
+            self.mesh_object_input.addItems(("A mesh", "B mesh"))
+            self.mesh_object_input.currentIndexChanged.connect(self._plot_selected_mesh)
+            layout.addWidget(QtWidgets.QLabel("3D에 표시할 mesh"))
+            layout.addWidget(self.mesh_object_input)
+            self.mesh_options_label = self._wrapped_label(
                 f"SAM3D 설정 · YAML · depth_source={sam3d_depth_source} · texture_baking={str(sam3d_texture_baking).lower()}")
             layout.addWidget(self.mesh_options_label)
             unit = "monocular 예측 scale · 실측 단위 아님" if sam3d_depth_source == "monocular" else "실측 depth 기반 mesh, asset 로컬 좌표(m)"
-            self.mesh_status = QtWidgets.QLabel(f"SAM3D · 후보 선택 대기 · {unit}")
-            self.mesh_status.setWordWrap(True)
+            self.mesh_status = self._wrapped_label(f"SAM3D · 후보 선택 대기 · {unit}")
             layout.addWidget(self.mesh_status)
-        if foundationpose or graspgenx:
+
+        mesh_slots = {}
+        if foundationpose or graspgenx or aprilcube:
             catalog_path = Path(__file__).resolve().parents[2] / "assets" / "meshes" / "catalog.json"
             catalog = json.loads(catalog_path.read_text(encoding="utf-8")) if catalog_path.is_file() else {}
             meshes = [(item["display_name"], item["preferred_mesh"], item["mesh_scale_to_m"])
@@ -263,165 +357,197 @@ class CameraWindow(QtWidgets.QMainWindow):
             meshes += [(item["display_name"], item["path"], item.get("mesh_scale_to_m", 1.0))
                        for item in catalog.get("table_leg", [])]
             self.pose_mesh_inputs, self.pose_scale_inputs, self.pose_mesh_choices, self.pose_seed_inputs = {}, {}, {}, {}
+            self.aprilcube_xyz_inputs, self.aprilcube_rpy_inputs = {}, {}
+            self.pose_advanced, self.pose_advanced_buttons = {}, {}
+            mesh_owner = ("foundationpose" if foundationpose else "aprilcube" if aprilcube else
+                          "graspgenx" if self.worker_enabled["graspgenx"] else "grasp_selection")
             for key in ("A", "B"):
-                row = QtWidgets.QHBoxLayout()
-                row.addWidget(QtWidgets.QLabel(f"{key} · mesh"))
+                slot = self._slot_panel(worker_layouts[mesh_owner], key)
+                mesh_slots[key] = slot
+                slot.addWidget(QtWidgets.QLabel("Mesh"))
                 choice = QtWidgets.QComboBox()
                 choice.addItem("이름으로 mesh 선택", None)
                 for name, mesh_path, scale_to_m in meshes:
-                    choice.addItem(name, {"mesh_path": str(catalog_path.parent / mesh_path),
-                                          "scale_to_m": scale_to_m})
+                    choice.addItem(name, {"mesh_path": str(catalog_path.parent / mesh_path), "scale_to_m": scale_to_m})
                 choice.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-                choice.setMinimumContentsLength(24)
+                choice.setMinimumContentsLength(12)
                 choice.currentIndexChanged.connect(lambda _index, key=key: self._select_pose_mesh(key))
                 self.pose_mesh_choices[key] = choice
-                row.addWidget(choice)
+                slot.addWidget(choice)
                 path = QtWidgets.QLineEdit()
-                path.setPlaceholderText("기존 mesh 파일 선택 · GLB / PLY / OBJ")
+                path.setPlaceholderText("GLB / PLY / OBJ mesh 파일")
                 path.textEdited.connect(lambda _text, key=key: self.pose_mesh_choices[key].setCurrentIndex(0))
                 self.pose_mesh_inputs[key] = path
-                row.addWidget(path, 1)
-                browse = QtWidgets.QPushButton("Browse")
+                slot.addWidget(path)
+                browse = QtWidgets.QPushButton("파일 찾기")
                 browse.clicked.connect(lambda _checked=False, key=key: self._browse_pose_mesh(key))
-                row.addWidget(browse)
-                row.addWidget(QtWidgets.QLabel("scale → m"))
+                slot.addWidget(browse)
                 scale = QtWidgets.QDoubleSpinBox()
                 scale.setDecimals(6)
                 scale.setRange(0.000001, 1000000)
                 scale.setValue(1)
                 self.pose_scale_inputs[key] = scale
-                row.addWidget(scale)
+                form = QtWidgets.QFormLayout()
+                form.addRow("scale → m", scale)
+                slot.addLayout(form)
                 if foundationpose:
-                    for text, callback in (("기존 mesh로 Start", self.start_pose), ("Stop", self.stop_pose)):
+                    for text, callback in (("추적 시작·재등록", self.start_pose), ("추적 중지", self.stop_pose)):
                         button = QtWidgets.QPushButton(text)
                         button.clicked.connect(lambda _checked=False, key=key, callback=callback: callback(key))
                         if callback == self.start_pose:
+                            button.setToolTip("현재 mesh와 SAM3 후보로 추적 시작·재등록")
                             self.pose_start_buttons[key] = button
-                        row.addWidget(button)
+                        slot.addWidget(button)
+                    if sam3d:
+                        button = QtWidgets.QPushButton("Mesh 생성 후 추적")
+                        button.setToolTip("SAM3D 설정으로 mesh를 생성하고 FoundationPose를 시작합니다")
+                        button.setEnabled(False)
+                        button.clicked.connect(lambda _checked=False, key=key: self.generate_mesh_and_start_pose(key))
+                        self.mesh_pose_buttons[key] = button
+                        slot.addWidget(button)
+                    advanced_button, advanced = self._fold_section(slot, "고급 · pose seed")
+                    self.pose_advanced_buttons[key], self.pose_advanced[key] = advanced_button, advanced
+                    advanced_layout = QtWidgets.QVBoxLayout(advanced)
+                    advanced_layout.setContentsMargins(0, 0, 0, 0)
                     seed = QtWidgets.QComboBox()
                     seed.addItem("SAM3D pose seed", "sam3d")
                     seed.addItem("현재 / 저장 FP seed", "foundationpose")
                     self.pose_seed_inputs[key] = seed
-                    row.addWidget(seed)
-                    refine = QtWidgets.QPushButton("Seed → FP refinement")
+                    advanced_layout.addWidget(seed)
+                    refine = QtWidgets.QPushButton("Seed로 정밀화")
                     refine.clicked.connect(lambda _checked=False, key=key: self.refine_pose(key))
-                    row.addWidget(refine)
-                if sam3d and foundationpose:
-                    button = QtWidgets.QPushButton("mesh 없음 · 생성 후 Start")
-                    button.setToolTip("실측 depth 기반 metric mesh를 생성하고 scale → m = 1로 FoundationPose를 시작합니다")
-                    button.setEnabled(False)
-                    button.clicked.connect(lambda _checked=False, key=key: self.generate_mesh_and_start_pose(key))
-                    self.mesh_pose_buttons[key] = button
-                    row.addWidget(button)
-                layout.addLayout(row)
-        if foundationpose:
-            self.pose_status = QtWidgets.QLabel("FoundationPose · mesh와 현재 SAM3 후보를 선택하고 Start")
-            self.pose_status.setWordWrap(True)
-            layout.addWidget(self.pose_status)
+                    advanced_layout.addWidget(refine)
+                if aprilcube:
+                    slot.addWidget(self._wrapped_label("cube_from_object · 큐브 기준 mesh 변환"))
+                    for title, fields, names, limit, decimals in (
+                        ("XYZ (m)", self.aprilcube_xyz_inputs, "XYZ", 1000, 4),
+                        ("RPY (deg)", self.aprilcube_rpy_inputs, "RPY", 360, 2),
+                    ):
+                        slot.addWidget(QtWidgets.QLabel(title))
+                        fields[key] = []
+                        row = QtWidgets.QHBoxLayout()
+                        for name in names:
+                            field = QtWidgets.QDoubleSpinBox()
+                            field.setRange(-limit, limit)
+                            field.setDecimals(decimals)
+                            field.setSingleStep(0.01 if names == "XYZ" else 1)
+                            field.setPrefix(f"{name}: ")
+                            field.setMinimumWidth(0)
+                            field.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Fixed)
+                            fields[key].append(field)
+                            row.addWidget(field)
+                        slot.addLayout(row)
+                    button = QtWidgets.QPushButton("적용")
+                    button.clicked.connect(lambda _checked=False, key=key: self.apply_aprilcube_target(key))
+                    slot.addWidget(button)
+        if foundationpose or aprilcube:
+            self.pose_status = self._wrapped_label("AprilCube · continuous pose · empty mesh shows cube axes" if aprilcube else
+                                                   "FoundationPose · mesh와 현재 SAM3 후보를 선택하고 Start")
+            worker_layouts["aprilcube" if aprilcube else "foundationpose"].addWidget(self.pose_status)
         if graspgenx:
+            layout = worker_layouts["graspgenx" if self.worker_enabled["graspgenx"] else "grasp_selection"]
             self.grasp_inputs, self.grasp_scores, self.grasp_buttons = {}, {}, {}
+            self.grasp_mesh_labels = {}
             for key in ("A", "B"):
-                row = QtWidgets.QHBoxLayout()
-                row.addWidget(QtWidgets.QLabel(f"{key} · grasp"))
-                for text, regenerate in (("Generate grasp", False), ("Regenerate", True)):
-                    button = QtWidgets.QPushButton(text)
-                    button.clicked.connect(lambda _checked=False, key=key, regenerate=regenerate:
-                                           self.generate_grasp(key, regenerate=regenerate))
-                    self.grasp_buttons[(key, regenerate)] = button
-                    row.addWidget(button)
-                load = QtWidgets.QPushButton("기존 bundle 불러오기")
+                slot = mesh_slots[key] if mesh_owner in {"graspgenx", "grasp_selection"} else self._slot_panel(layout, key)
+                if foundationpose:
+                    label = self._wrapped_label("Mesh · FoundationPose 탭의 선택을 사용합니다")
+                    self.grasp_mesh_labels[key] = label
+                    self.pose_mesh_inputs[key].textChanged.connect(
+                        lambda text, label=label: label.setText(f"Mesh · {text or 'FoundationPose 탭에서 선택'}"))
+                    slot.addWidget(label)
+                if self.worker_enabled["graspgenx"]:
+                    for text, regenerate in (("후보 생성", False), ("다시 생성", True)):
+                        button = QtWidgets.QPushButton(text)
+                        button.clicked.connect(lambda _checked=False, key=key, regenerate=regenerate:
+                                               self.generate_grasp(key, regenerate=regenerate))
+                        self.grasp_buttons[(key, regenerate)] = button
+                        slot.addWidget(button)
+                load = QtWidgets.QPushButton("기존 후보 불러오기 · bundle")
                 load.clicked.connect(lambda _checked=False, key=key: self.load_grasp_bundle_path(key))
-                row.addWidget(load)
+                slot.addWidget(load)
                 combo = QtWidgets.QComboBox()
                 combo.addItem("후보 대기", None)
+                combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+                combo.setMinimumContentsLength(12)
                 combo.currentIndexChanged.connect(lambda _index, key=key: self._select_grasp(key))
                 self.grasp_inputs[key] = combo
-                row.addWidget(combo, 1)
+                slot.addWidget(combo)
                 score = QtWidgets.QLabel("score: —")
                 self.grasp_scores[key] = score
-                row.addWidget(score)
-                layout.addLayout(row)
+                slot.addWidget(score)
             self.grasp_object_input = QtWidgets.QComboBox()
             self.grasp_object_input.addItems(("A grasp · object local", "B grasp · object local"))
             self.grasp_object_input.currentIndexChanged.connect(self._plot_grasp_local)
+            layout.addWidget(QtWidgets.QLabel("3D에 표시할 후보"))
             layout.addWidget(self.grasp_object_input)
-            self.grasp_status = QtWidgets.QLabel("GraspGenX · mesh 선택 → 생성 · A/B는 물체 slot이며 좌/우 팔이 아닙니다")
-            self.grasp_status.setWordWrap(True)
+            self.grasp_status = self._wrapped_label("GraspGenX · mesh 선택 → 생성 · A/B는 물체 slot이며 좌/우 팔이 아닙니다" if self.worker_enabled["graspgenx"] else
+                                                   "저장된 grasp bundle 불러오기 · GraspGenX worker는 실행하지 않습니다")
             layout.addWidget(self.grasp_status)
         if grasp_selection:
-            row = QtWidgets.QHBoxLayout()
+            layout = worker_layouts["grasp_selection"]
             self.selection_mode_input = QtWidgets.QComboBox()
             if vlm:
                 self.selection_mode_input.addItem("VLM coordination · unknown 그대로", "semantic")
             for text, mode in (("수동 single · left", "left"), ("수동 single · right", "right"),
                                ("수동 dual · 같은 물체", "dual")):
                 self.selection_mode_input.addItem(text, mode)
-            row.addWidget(self.selection_mode_input)
+            layout.addWidget(QtWidgets.QLabel("Grasp mode"))
+            layout.addWidget(self.selection_mode_input)
             self.selection_object_input = QtWidgets.QComboBox()
             self.selection_object_input.addItems(("수동 대상 A", "수동 대상 B"))
-            row.addWidget(self.selection_object_input)
-            self.selection_button = QtWidgets.QPushButton("grasp 선택 · 로봇 기준 확인")
+            layout.addWidget(self.selection_object_input)
+            self.selection_button = QtWidgets.QPushButton("후보 선택·다시 평가")
             self.selection_button.clicked.connect(self.request_grasp_selection)
-            row.addWidget(self.selection_button)
-            refresh = QtWidgets.QPushButton("새로고침 · 다시 평가")
-            refresh.clicked.connect(self.request_grasp_selection)
-            row.addWidget(refresh)
+            layout.addWidget(self.selection_button)
             self.selection_candidate_input = QtWidgets.QComboBox()
             self.selection_candidate_input.addItem("선택 결과 대기", None)
+            self.selection_candidate_input.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            self.selection_candidate_input.setMinimumContentsLength(12)
             self.selection_candidate_input.currentIndexChanged.connect(self._selection_candidate_changed)
-            row.addWidget(self.selection_candidate_input, 1)
-            layout.addLayout(row)
-            self.selection_status = QtWidgets.QLabel("기존 grasp bundle 후처리 · 로봇 미연결이면 geometry-only · 자동 생성/실행 없음")
-            self.selection_status.setWordWrap(True)
+            layout.addWidget(self.selection_candidate_input)
+            self.selection_status = self._wrapped_label("기존 grasp bundle 후처리 · 로봇 미연결이면 geometry-only · 자동 생성/실행 없음")
             layout.addWidget(self.selection_status)
-            details = QtWidgets.QToolButton()
-            details.setText("로봇 기준 pose / IK 결과 상세")
-            details.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-            details.setCheckable(True)
-            details.setArrowType(QtCore.Qt.ArrowType.RightArrow)
-            layout.addWidget(details)
+            self.selection_advanced_button, self.selection_advanced = self._fold_section(layout, "고급 · base pose / IK / 표시용 FK")
+            advanced_layout = QtWidgets.QVBoxLayout(self.selection_advanced)
+            advanced_layout.setContentsMargins(0, 0, 0, 0)
             self.selection_details = QtWidgets.QPlainTextEdit()
             self.selection_details.setReadOnly(True)
-            self.selection_details.setMaximumHeight(120)
-            self.selection_details.hide()
-            details.toggled.connect(self.selection_details.setVisible)
-            details.toggled.connect(lambda checked: details.setArrowType(
-                QtCore.Qt.ArrowType.DownArrow if checked else QtCore.Qt.ArrowType.RightArrow))
-            layout.addWidget(self.selection_details)
-            row = QtWidgets.QHBoxLayout()
+            self.selection_details.setMaximumHeight(160)
+            advanced_layout.addWidget(self.selection_details)
             for text, callback in (("파지 관계 고정(표시용)", self.attach_grasp_fk), ("파지 관계 해제", self.detach_grasp_fk)):
                 button = QtWidgets.QPushButton(text)
                 button.clicked.connect(lambda _checked=False, callback=callback: callback())
-                row.addWidget(button)
-            self.fk_status = QtWidgets.QLabel("Grasp FK · 표시용 고정 전 · 로봇 명령 없음")
-            self.fk_status.setWordWrap(True)
-            row.addWidget(self.fk_status, 1)
-            layout.addLayout(row)
-        scroll = QtWidgets.QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(controls)
-        scroll.setMaximumHeight(360)
-        outer_layout.addWidget(scroll)
-        layout = outer_layout
+                advanced_layout.addWidget(button)
+            self.fk_status = self._wrapped_label("Grasp FK · 표시용 고정 전 · 로봇 명령 없음")
+            advanced_layout.addWidget(self.fk_status)
+
+        active_key = "aprilcube" if aprilcube else next((key for key in worker_titles if key != "camera" and self.worker_enabled[key]), "camera")
+        self.worker_tabs.setCurrentRow(tuple(worker_titles).index(active_key))
         split = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         self.image_view = RgbImageView()
         split.addWidget(self.image_view)
         self.mesh_view = FigureCanvasQTAgg(Figure(figsize=(5, 4)))
-        self.mesh_view.figure.subplots_adjust(left=0.02, right=0.86, bottom=0.14 if foundationpose else 0.06, top=0.9)
+        self.mesh_view.figure.subplots_adjust(left=0.02, right=0.86, bottom=0.14 if foundationpose or aprilcube else 0.06, top=0.9)
         self.axes = self.mesh_view.figure.add_subplot(111, projection="3d")
         self.axes.set_title("Mesh / Pose · Waiting for data")
         self.axes.set_xlabel("X")
         self.axes.set_ylabel("Y")
         self.axes.set_zlabel("Z")
-        self.mesh_view.setToolTip("FoundationPose · 카메라 좌표계 mesh·XYZ(m)·회전축 · 표시용 간소화" if foundationpose else
+        self.mesh_view.setToolTip("AprilCube · camera-frame mesh / pose · display preview" if aprilcube else
+                                 "FoundationPose · 카메라 좌표계 mesh·XYZ(m)·회전축 · 표시용 간소화" if foundationpose else
                                  "Mesh / Pose 표시 영역 · 입력 전까지 비어 있습니다")
         split.addWidget(self.mesh_view)
-        split.setSizes([650, 450])
-        layout.addWidget(split, 1)
-        self.metadata_label = QtWidgets.QLabel("수신 영상 없음 · 3D 영역은 Mesh / Pose 입력 전까지 비어 있습니다")
-        self.metadata_label.setWordWrap(True)
+        split.setSizes([550, 450])
+        body.addWidget(split)
+        body.setStretchFactor(0, 0)
+        body.setStretchFactor(1, 1)
+        body.setSizes([440, 1000])
+        self.metadata_label = self._wrapped_label("수신 영상 없음 · 3D 영역은 Mesh / Pose 입력 전까지 비어 있습니다")
         self.metadata_label.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(self.metadata_label)
+        outer_layout.addWidget(self.metadata_label)
+        self.status = self._wrapped_label("구독 연결 중 · 카메라 영상 대기")
+        outer_layout.addWidget(self.status)
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(33)
         self.timer.timeout.connect(self.poll_once)
@@ -441,9 +567,42 @@ class CameraWindow(QtWidgets.QMainWindow):
                 field.textChanged.connect(self._refresh_task_roles)
         if foundationpose:
             self._publish_pose_control()
+        if aprilcube:
+            for key in ("A", "B"):
+                self.apply_aprilcube_target(key, redraw=False)
         self._refresh_task_roles()
         self.receiver.start()
         self.timer.start()
+
+    @staticmethod
+    def _wrapped_label(text):
+        label = QtWidgets.QLabel(text)
+        label.setWordWrap(True)
+        label.setMinimumWidth(0)
+        return label
+
+    @staticmethod
+    def _slot_panel(layout, key):
+        group = QtWidgets.QGroupBox(f"물체 {key}")
+        group.setMinimumWidth(0)
+        layout.addWidget(group)
+        return QtWidgets.QVBoxLayout(group)
+
+    @staticmethod
+    def _fold_section(layout, title):
+        button = QtWidgets.QToolButton()
+        button.setText(title)
+        button.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        button.setCheckable(True)
+        button.setArrowType(QtCore.Qt.ArrowType.RightArrow)
+        layout.addWidget(button)
+        content = QtWidgets.QWidget()
+        content.hide()
+        layout.addWidget(content)
+        button.toggled.connect(content.setVisible)
+        button.toggled.connect(lambda checked: button.setArrowType(
+            QtCore.Qt.ArrowType.DownArrow if checked else QtCore.Qt.ArrowType.RightArrow))
+        return button, content
 
     def poll_once(self):
         if self._closing:
@@ -459,8 +618,16 @@ class CameraWindow(QtWidgets.QMainWindow):
         if stats.get("ready") and not self._ready_logged:
             log_record("ready", worker="camera_ui")
             self._ready_logged = True
+        if self.recording:
+            recording_status = self.receiver.take_recording_latest()
+            if recording_status is not None:
+                self._accept_recording_status(recording_status)
         if frame is not None:
             self._latest_frame = frame
+            elapsed = stats.get("elapsed_s", 0)
+            fps = f" · 평균 {self.received_count / elapsed:.1f} FPS" if elapsed else ""
+            self.camera_info.setText(f"{frame.metadata.get('camera_id', 'camera')} · "
+                                     f"{frame.rgb.shape[1]} × {frame.rgb.shape[0]} · {self.received_count} frames{fps}")
         display_changed = frame is not None
         if self.vlm:
             result = self.receiver.take_vlm_latest()
@@ -473,7 +640,7 @@ class CameraWindow(QtWidgets.QMainWindow):
                 and result.revision == self._prompts.revision):
             self._sam3_result = result
             display_changed = True
-            if not self._snapshot_active and (self.sam3d or self.foundationpose):
+            if not self._snapshot_active:
                 self._update_mesh_candidates(result)
             if self.vlm and self._vlm_plan:
                 self._semantic_updating = True
@@ -489,10 +656,15 @@ class CameraWindow(QtWidgets.QMainWindow):
                 finally:
                     self._semantic_updating = False
                 display_changed = True
-        if self.foundationpose:
+        if self.foundationpose or self.aprilcube:
             result = self.receiver.take_pose_latest()
             if result is not None:
                 display_changed = self._accept_pose_result(result) or display_changed
+        if self.aprilcube:
+            overlay = self.receiver.take_aprilcube_overlay_latest()
+            if overlay is not None:
+                self._aprilcube_overlay = overlay
+                display_changed = True
         if self.graspgenx:
             for result in self.receiver.take_grasp_results():
                 display_changed = self._accept_grasp_result(result) or display_changed
@@ -524,6 +696,31 @@ class CameraWindow(QtWidgets.QMainWindow):
             failed = self.frames and self.received_count < self.frames
             self._finish(1 if failed else 0,
                          f"시간 종료: 수신 {self.received_count}" + (f"/{self.frames}" if self.frames else "") + " frames")
+
+    def send_recording_control(self, action):
+        from ..ipc.recording import RecordingControl
+
+        if not self.recording or self._recording_request_id is not None:
+            return
+        request = RecordingControl(uuid4().hex, action)
+        self._recording_request_id = request.request_id
+        self.receiver.send_recording_control(request)
+        for button in self.recording_buttons.values():
+            button.setEnabled(False)
+        self.recording_status.setText(f"Recording · {action} 요청 중")
+
+    def _accept_recording_status(self, status):
+        if self._recording_request_id is not None and status.request_id != self._recording_request_id:
+            return
+        self._recording_request_id = None
+        self._recording_state = status.state
+        self.recording_status.setText(f"Recording · {status.state}" + (f" · {status.error}" if status.error else ""))
+        self.recording_counts.setText(f"Episode {status.episode_index} · {status.episode_frames} frames · "
+                                      f"Total {status.total_frames} frames")
+        self.recording_output.setText(f"Output · {status.output_dir}")
+        self.recording_buttons["start"].setEnabled(status.state in {"ready", "saved", "discarded"})
+        self.recording_buttons["save"].setEnabled(status.state == "recording" and status.episode_frames > 0)
+        self.recording_buttons["discard"].setEnabled(status.state == "recording")
 
     def apply_prompts(self, *, redraw=True):
         from ..ipc.sam3 import ObjectPrompt
@@ -979,7 +1176,21 @@ class CameraWindow(QtWidgets.QMainWindow):
                     rgb[mask] = (rgb[mask] * 0.6 + np.asarray(color) * 0.4).astype(np.uint8)
                     annotations.append((box, color, f"{item.object_id}[{index}]"))
             self.sam3_status.setText(" / ".join(counts) + " · 최신 SAM3 overlay · A/B는 지속 추적 ID가 아닙니다")
-        self.image_view.set_rgb(rgb)
+        direct_aprilcube_axes = (self.aprilcube and not self._snapshot_active
+                                 and not any(target.mesh_path for target in self._pose_targets.values()))
+        overlay = (self._aprilcube_overlay
+                   if self.aprilcube and not self._snapshot_active and not direct_aprilcube_axes else None)
+        if overlay is not None and overlay.rgba.shape[:2] == rgb.shape[:2]:
+            alpha = overlay.rgba[..., 3:4].astype(np.float32) / 255
+            rgb = (rgb * (1 - alpha) + overlay.rgba[..., :3] * alpha).astype(np.uint8)
+        if self.aprilcube and not direct_aprilcube_axes:
+            # Selected meshes and their axes remain on the RGBA worker path.
+            poses = ()
+        if direct_aprilcube_axes and poses:
+            # Draw axes from the same latest pose as the plot, then scale once.
+            self.image_view.set_rgb(rgb, redraw=False)
+        else:
+            self.image_view.set_rgb(rgb)
         if annotations or poses:
             painter = QtGui.QPainter(self.image_view.image)
             try:
@@ -994,9 +1205,19 @@ class CameraWindow(QtWidgets.QMainWindow):
                     pose = item.camera_from_object
                     origin = pose[:3, 3]
                     points = np.vstack((origin, origin + pose[:3, :3].T * 0.05))
+                    if direct_aprilcube_axes and not np.all(points[:, 2] > 1e-6):
+                        continue
                     intrinsics = frame.metadata["intrinsics"]
                     pixels = points[:, :2] / points[:, 2:3]
                     pixels = pixels * (intrinsics["fx"], intrinsics["fy"]) + (intrinsics["cx"], intrinsics["cy"])
+                    if (direct_aprilcube_axes and intrinsics.get("distortion_model") != "zed_rectified"
+                            and np.any(intrinsics.get("coefficients", []))):
+                        from ..models.aprilcube import camera_parameters
+                        from ..models.aprilcube_overlay import _project
+
+                        pixels = _project(points, *camera_parameters(frame))
+                    if direct_aprilcube_axes and not np.isfinite(pixels).all():
+                        continue
                     start = QtCore.QPointF(*pixels[0])
                     for endpoint, axis, color in zip(pixels[1:], "XYZ", ((255, 0, 0), (0, 255, 0), (0, 0, 255))):
                         painter.setPen(QtGui.QPen(QtGui.QColor(*color), 3))
@@ -1029,9 +1250,10 @@ class CameraWindow(QtWidgets.QMainWindow):
             f"capture={metadata.get('capture_time_ns')} ({metadata.get('timestamp_domain')})"
             + (" · 실시간 카메라" if live_frame else
                " · SAM3 결과의 원본 프레임" if result is not None else
-               " · FP 결과의 원본 프레임" if self._pose_result is not None else " · 원본 카메라")
-            + (f" · FP pose sequence={self._pose_result.frame.metadata.get('sequence')}"
+               f" · {'AprilCube' if self.aprilcube else 'FP'} 결과의 원본 프레임" if self._pose_result is not None else " · 원본 카메라")
+            + (f" · {'AprilCube' if self.aprilcube else 'FP'} pose sequence={self._pose_result.frame.metadata.get('sequence')}"
                if self._pose_result is not None and self._pose_targets else "")
+            + (f" · AprilCube overlay sequence={overlay.metadata.get('sequence')}" if overlay is not None else "")
             + (f" · SAM3 overlay sequence={result.frame.metadata.get('sequence')}" if result is not None else ""))
 
     def _mesh_prompt_edited(self, key):
@@ -1232,6 +1454,33 @@ class CameraWindow(QtWidgets.QMainWindow):
 
         self.receiver.set_pose_control(PoseControl(tuple(self._pose_targets.values())))
 
+    def apply_aprilcube_target(self, key, *, redraw=True):
+        from ..ipc.aprilcube import AprilCubeControl, AprilCubeTarget
+
+        roll, pitch, yaw = np.deg2rad([field.value() for field in self.aprilcube_rpy_inputs[key]])
+        cr, cp, cy = np.cos((roll, pitch, yaw))
+        sr, sp, sy = np.sin((roll, pitch, yaw))
+        transform = np.eye(4, dtype=np.float64)
+        transform[:3, :3] = ((cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr),
+                             (sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr),
+                             (-sp, cp * sr, cp * cr))
+        transform[:3, 3] = [field.value() for field in self.aprilcube_xyz_inputs[key]]
+        path = self.pose_mesh_inputs[key].text().strip()
+        target = AprilCubeTarget(key, uuid4().hex, path, self.pose_scale_inputs[key].value(), transform)
+        self._pose_targets[key] = target
+        self._pose_objects.pop(key, None)
+        self._pose_meshes.pop(key, None)
+        self._pose_mesh_errors.pop(key, None)
+        self._aprilcube_overlay = None
+        self.receiver.send_aprilcube_control(AprilCubeControl(tuple(self._pose_targets.values())))
+        if path:
+            self._prepare_pose_mesh(key)
+        self.pose_status.setText(f"AprilCube · {key}: applied · " + (Path(path).name if path else "cube axes only"))
+        if redraw:
+            self._plot_pose()
+            self._display_pose_frame()
+        return target
+
     def start_pose(self, key, *, frame=None, mask=None, prompt_revision=None, redraw=True, initial_pose=None, initialization="register"):
         from ..ipc.foundationpose import PoseTarget
 
@@ -1298,7 +1547,7 @@ class CameraWindow(QtWidgets.QMainWindow):
         frame = self._latest_frame
         if frame is None and self._sam3_result is not None:
             frame = self._sam3_result.frame
-        if frame is None and self._pose_result is not None:
+        if frame is None and self._pose_result is not None and not self.aprilcube:
             frame = self._pose_result.frame
         if frame is not None:
             self._display_frame(frame, self._sam3_result, tuple(self._pose_objects.values()),
@@ -1329,6 +1578,7 @@ class CameraWindow(QtWidgets.QMainWindow):
 
     def _show_snapshot(self, *, redraw=True):
         self._snapshot_active = True
+        self.live_camera_button.setVisible(True)
         self._task_flow = None
         if hasattr(self, "pose_mesh_inputs"):
             previous, self._semantic_updating = self._semantic_updating, True
@@ -1373,6 +1623,7 @@ class CameraWindow(QtWidgets.QMainWindow):
 
     def show_live_camera(self):
         self._snapshot_active = False
+        self.live_camera_button.setVisible(False)
         self._mesh_bindings.clear()
         if self._sam3_result is not None and hasattr(self, "candidate_inputs"):
             self._update_mesh_candidates(self._sam3_result)
@@ -1432,7 +1683,8 @@ class CameraWindow(QtWidgets.QMainWindow):
         accepted = False
         for item in result.objects:
             target = self._pose_targets.get(item.object_id)
-            if target is not None and target.session_id == item.session_id:
+            if (target is not None and target.session_id == item.session_id
+                    and (not self.aprilcube or item.pose_source == "aprilcube")):
                 self._pose_objects[item.object_id] = item
                 accepted = True
         if not accepted:
@@ -1446,7 +1698,7 @@ class CameraWindow(QtWidgets.QMainWindow):
             mesh_error = self._pose_mesh_errors.get(key)
             labels.append(f"{key}: {item.status}{location}{mismatch}" + (f" · {item.error}" if item.error else "")
                           + (f" · mesh preview: {mesh_error}" if mesh_error else ""))
-        self.pose_status.setText(" / ".join(labels))
+        self.pose_status.setText(("AprilCube · " if self.aprilcube else "") + " / ".join(labels))
         self._plot_pose()
         return True
 
@@ -1467,9 +1719,10 @@ class CameraWindow(QtWidgets.QMainWindow):
                 mesh = load_pose_mesh(target.mesh_path, target.mesh_scale_to_m, max_faces=2000)
             self._pose_meshes[key] = (target.session_id, mesh)
         except Exception as error:
-            # A display asset error must not stop the independent FP session.
+            # A display asset error must not stop the independent pose session.
             self._pose_mesh_errors[key] = f"{type(error).__name__}: {error}"
-            self.pose_status.setText(f"{key}: registering · mesh preview: {self._pose_mesh_errors[key]}")
+            state = "AprilCube · applied" if self.aprilcube else "registering"
+            self.pose_status.setText(f"{key}: {state} · mesh preview: {self._pose_mesh_errors[key]}")
 
     def refine_pose(self, key):
         from .grasp_preview import mesh_binding
@@ -2020,7 +2273,7 @@ class CameraWindow(QtWidgets.QMainWindow):
             self.axes.set_xlabel("X (m)")
             self.axes.set_ylabel("Y (m)")
             self.axes.set_zlabel("Z (m)")
-            self.axes.set_title("FoundationPose · mesh / camera coordinates")
+            self.axes.set_title(f"{'AprilCube' if self.aprilcube else 'FoundationPose'}\nMesh / camera coordinates")
             self._plot_mode = "pose"
         visible = {key for key, item in self._pose_objects.items() if item.camera_from_object is not None}
         desired = ({self._grasp_artist_key(key, arm) for key in visible for arm, _pose in self._display_grasps(key)}

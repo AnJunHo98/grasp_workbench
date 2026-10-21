@@ -11,6 +11,24 @@ ipc:
 ui:
   enabled: true
 
+recording:
+  enabled: false            # starts an idle LeRobot recorder; use the UI to Start / Save / Discard
+  python: null
+  output_dir: runs/datasets
+  fps: 30                   # dataset nominal rate; original camera timestamps are also preserved
+  source: pose              # pose: exact pose input RGB-D + A/B results; camera: camera-only RGB-D
+
+aprilcube:
+  enabled: false             # true runs Camera + AprilCube pose + overlay + UI; optional recording stays enabled
+  python: null
+  source_dir: null           # default third_party/aprilcube
+  config_a: examples/aprilcube/cube_a.json
+  config_b: examples/aprilcube/cube_b.json
+  enable_filter: true
+  fast: true                # faster marker detection; use false for subpixel corner refinement
+  log_timing: false         # separate pose/overlay worker processing and source-frame age logs
+  overlay_alpha: 0.65
+
 sam3:
   enabled: false
   python: null

@@ -14,6 +14,10 @@ _DEFAULTS = {
     "camera": {"type": "zed", "serial": None, "resolution": "HD720", "fps": 30},
     "ipc": {"service": "grasp_workbench/camera/rgbd"},
     "ui": {"enabled": True},
+    "recording": {"enabled": False, "python": None, "output_dir": "runs/datasets", "fps": 30, "source": "pose"},
+    "aprilcube": {"enabled": False, "python": None, "source_dir": None,
+                  "config_a": "examples/aprilcube/cube_a.json", "config_b": "examples/aprilcube/cube_b.json",
+                  "enable_filter": True, "fast": True, "log_timing": False, "overlay_alpha": 0.65},
     "sam3": {"enabled": False, "python": None, "checkpoint": None, "device": "cuda"},
     "sam3d": {"enabled": False, "python": None, "source_dir": None,
               "config_path": None, "output_dir": "runs/meshes", "seed": 42,
@@ -28,6 +32,16 @@ _DEFAULTS = {
     "grasp_selection": {"enabled": False, "python": None, "robot_config": None, "settings": {}},
     "run": {"frames": 0, "timeout": 0.0},
 }
+APRILCUBE_DISABLED_WORKERS = ("vlm", "sam3", "sam3d", "foundationpose", "graspgenx", "grasp_selection")
+
+
+def apply_worker_mode(options):
+    """Apply the exclusive AprilCube mode to runtime options, never to YAML files."""
+    if options.get("aprilcube", False):
+        for name in APRILCUBE_DISABLED_WORKERS:
+            options[name] = False
+        options["ui"] = True
+    return options
 
 
 def _value(section, key, value, directory):
@@ -42,13 +56,14 @@ def _value(section, key, value, directory):
         if type(value) not in (str, int) or value == "":
             raise ValueError(f"{field} must be a string, integer or null")
         return str(value)
-    if section in {"sam3", "sam3d", "foundationpose", "vlm", "graspgenx", "grasp_selection"} and key in {
+    if section in {"recording", "aprilcube", "sam3", "sam3d", "foundationpose", "vlm", "graspgenx", "grasp_selection"} and key in {
         "python", "checkpoint", "source_dir", "config_path", "output_dir", "api_key_file", "asset_dir", "codex_executable",
         "checkpoint_dir", "assets_dir",
         "policy_catalog", "session_dir",
         "robot_config",
+        "config_a", "config_b",
     }:
-        if value is None and key not in {"output_dir", "asset_dir", "codex_executable", "session_dir"}:
+        if value is None and key not in {"output_dir", "asset_dir", "codex_executable", "session_dir", "config_a", "config_b"}:
             return None
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"{field} must be a nonempty string or null")
@@ -81,8 +96,12 @@ def _value(section, key, value, directory):
         raise ValueError("camera.type must be zed or realsense")
     if field == "sam3d.depth_source" and value not in {"depth", "monocular"}:
         raise ValueError("sam3d.depth_source must be depth or monocular")
+    if field == "recording.source" and value not in {"camera", "pose"}:
+        raise ValueError("recording.source must be camera or pose")
     if field == "vlm.backend" and value not in {"openai_api", "codex_cli", "anthropic_api"}:
         raise ValueError("vlm.backend must be openai_api, codex_cli or anthropic_api")
+    if field == "aprilcube.overlay_alpha" and value > 1:
+        raise ValueError("aprilcube.overlay_alpha must be a finite number between 0 and 1")
     return value
 
 
@@ -112,10 +131,13 @@ def load_run_config(path=None) -> dict:
     """Return flat CLI defaults; only implicit shared config uses a local overlay."""
     selected = Path(path if path is not None else DEFAULT_CONFIG_PATH).expanduser().resolve()
     sections = {name: dict(options) for name, options in _DEFAULTS.items()}
+    for name in ("config_a", "config_b"):
+        sections["aprilcube"][name] = str((ROOT / sections["aprilcube"][name]).resolve())
     sections["sam3d"]["output_dir"] = str((ROOT / "runs/meshes").resolve())
     sections["vlm"]["asset_dir"] = str((ROOT / "runs/assets").resolve())
     sections["vlm"]["session_dir"] = str((ROOT / "runs/tasks").resolve())
     sections["graspgenx"]["output_dir"] = str((ROOT / "runs/grasps").resolve())
+    sections["recording"]["output_dir"] = str((ROOT / "runs/datasets").resolve())
     sections["graspgenx"]["settings"] = {}
     sections["grasp_selection"]["settings"] = {}
     _merge(selected, sections)
@@ -127,10 +149,20 @@ def load_run_config(path=None) -> dict:
     vlm = sections["vlm"]
     graspgenx = sections["graspgenx"]
     selection = sections["grasp_selection"]
-    return {
+    aprilcube = sections["aprilcube"]
+    recording = sections["recording"]
+    return apply_worker_mode({
         "camera": camera["type"], "serial": camera["serial"],
         "resolution": camera["resolution"], "fps": camera["fps"],
         "service": sections["ipc"]["service"], "ui": sections["ui"]["enabled"],
+        "recording": recording["enabled"], "recording_python": recording["python"] or sys.executable,
+        "recording_output_dir": recording["output_dir"], "recording_fps": recording["fps"],
+        "recording_source": recording["source"],
+        "aprilcube": aprilcube["enabled"], "aprilcube_python": aprilcube["python"] or sys.executable,
+        "aprilcube_source_dir": aprilcube["source_dir"] or str((ROOT / "third_party/aprilcube").resolve()),
+        "aprilcube_config_a": aprilcube["config_a"], "aprilcube_config_b": aprilcube["config_b"],
+        "aprilcube_enable_filter": aprilcube["enable_filter"], "aprilcube_overlay_alpha": aprilcube["overlay_alpha"],
+        "aprilcube_fast": aprilcube["fast"], "aprilcube_log_timing": aprilcube["log_timing"],
         "sam3": sam3["enabled"], "sam3_python": sam3["python"] or sys.executable,
         "sam3_checkpoint": sam3["checkpoint"], "sam3_device": sam3["device"],
         "sam3d": sam3d["enabled"], "sam3d_python": sam3d["python"] or sys.executable,
@@ -159,4 +191,4 @@ def load_run_config(path=None) -> dict:
         "grasp_selection_robot_config": selection["robot_config"],
         "grasp_selection_settings": selection["settings"],
         "frames": sections["run"]["frames"], "timeout": sections["run"]["timeout"],
-    }
+    })

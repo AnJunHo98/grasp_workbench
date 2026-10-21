@@ -28,8 +28,10 @@ FFW·ROS는 필수가 아니며, **실제 로봇 이동·관절 명령은 수행
 | SAM3 | A/B 두 prompt의 연속 분할, 후보 선택, 박스·포인트 보정 |
 | SAM3D · 선택 | 고정한 RGB-D·mask에서 mesh 생성. 기존 mesh가 있으면 생략 가능 |
 | FoundationPose | mesh 등록·연속 pose 추적, 영상 overlay·3D mesh 표시 |
+| AprilCube · 대체 모드 | 태그 기반 A/B pose 추정·선택 mesh의 RGB overlay. 일반 모델 worker는 실행하지 않음 |
 | GraspGenX | mesh 기준 grasp 후보 생성·저장·재사용 |
 | Grasp selection · 선택 | 한팔/양팔 후보 선택, 로봇 연결 시 base 좌표 변환·endpoint IK 확인 |
+| Recording · optional | Independent LeRobotDataset recorder for original RGB-D and A/B pose results |
 
 **A/B는 물체 슬롯이지 좌/우 팔이 아닙니다.** VLM은 의미 정보를 만들며 mask·수치 pose·실제 접촉 상태를 추정하지 않습니다.
 
@@ -103,11 +105,44 @@ Ctrl+C 또는 UI 종료로 해당 실행의 worker를 정리합니다. 일반 �
 
 - **VLM 인식을 사용하려면** 위 조합에 `vlm.enabled: true`와 backend 설정을 추가합니다.
 - **`enabled: true`는 worker 시작**입니다. 버튼을 누르기 전부터 모든 추론을 실행한다는 뜻은 아닙니다.
-  SAM3는 Apply 이후 연속 처리하고, 나머지는 버튼 또는 명시적인 VLM/Task 진행으로 요청합니다.
+  SAM3는 prompt 적용 이후 연속 처리하고, 나머지는 버튼 또는 명시적인 VLM/Task 진행으로 요청합니다.
 - 각 모델 worker는 따로 켭니다. VLM·FP·SAM3D를 켠다고 SAM3 backend까지 자동 시작하지 않습니다.
 - `run`은 항상 카메라를 시작합니다. **`camera.enabled`는 없습니다.**
 - 모델 기능을 켜면 `ui.enabled: false`여도 UI를 사용합니다. 카메라만 콘솔로 확인할 때는 모든 모델을 끄고
   `ui.enabled: false`로 설정합니다. Headless 모델 실행 설정으로 해석하지 않습니다.
+
+### AprilCube 대체 모드
+
+```yaml
+aprilcube:
+  enabled: true
+  fast: true
+```
+
+이 모드에서는 **Camera + AprilCube Pose + AprilCube Overlay + UI** 네 프로세스를 실행합니다.
+`recording.enabled: true`이면 독립 수집 worker도 함께 실행합니다. VLM·SAM3·SAM3D·FoundationPose·GraspGenX·
+grasp selection은 설정이 `true`여도 실행하지 않습니다. YAML은 수정하지 않으므로 AprilCube를 다시
+`false`로 바꾸면 기존 설정대로 돌아갑니다. pose는 기존 FoundationPose 결과 채널로 발행하고 출처를
+`aprilcube`로 구분합니다. [설치·큐브 정의·mesh 배치·IPC](docs/aprilcube.md)
+
+### Optional LeRobot data recording
+
+The independent recorder uses **LeRobotDataset 0.6.1 APIs only**; it does not replace the camera worker,
+run LeRobot robot control, or train a policy. Use a separate Python 3.12+ environment for its optional dependencies.
+
+```yaml
+recording:
+  enabled: true
+  python: .venv-recorder/bin/python
+  output_dir: runs/datasets
+  fps: 30
+  source: pose            # pose / camera
+```
+
+Run `grasp-workbench run`, then use **Recording → Start Recording / Save Episode / Discard Episode**.
+`pose` records each received pose result with its exact source RGB-D, including unavailable A/B poses;
+it waits for AprilCube or FoundationPose results. Use `camera` for RGB-D-only collection without a pose worker.
+The recorder stays available in AprilCube mode. [Installation and storage contract](docs/recording.md)
 
 <a id="configuration"></a>
 ## 3. YAML 설정
@@ -205,26 +240,46 @@ Claude Code CLI를 사용하는 backend는 아닙니다. [Claude API 설치·인
 <a id="workflow"></a>
 ## 5. UI 사용 흐름
 
+상단에는 **VLM 지시문·인식 버튼·상태**를 두고, Source/Target 역할 편집과 Task 상세는 접어서 표시합니다.
+왼쪽의 worker 탭을 고르면 해당 기능의 입력·버튼만 보이고, 오른쪽의 **실시간 RGB와 Mesh / Pose 3D**는 공통으로 유지합니다.
+
+| 왼쪽 탭 | 주요 조작 |
+|---|---|
+| Camera | 장치·수신 상태 확인. 시작 시 자동 연결 |
+| SAM3 | A/B prompt 적용·분할 중지, 후보 선택·mask 보정 |
+| SAM3D | A/B mesh 생성·결과 선택 |
+| FoundationPose | A/B mesh 선택·scale, 추적 시작·재등록/중지, mesh 생성 후 추적 |
+| GraspGenX | A/B 후보 생성·다시 생성·기존 후보 불러오기 · bundle |
+| Grasp Selection | 한팔/양팔 mode·대상 선택, 후보 선택·다시 평가 |
+| AprilCube | A/B mesh·scale·cube→mesh XYZ/RPY 적용 |
+| Recording | Start Recording / Save Episode / Discard Episode; dataset path and frame count |
+
+**worker on/off는 YAML에서만 정합니다.** 탭 선택은 프로세스를 시작·중지하거나 추론을 요청하지 않습니다.
+꺼진 worker 탭은 OFF 안내만 표시하며, AprilCube 모드에서는 Camera·AprilCube와 별도로 켠 Recording만 활성화됩니다.
+FP seed refinement와 표시용 hand FK·로봇 상세는 해당 탭의 **고급** 영역에 있습니다.
+
 ### 수동 prompt로 진행
 
-1. **분할:** A/B에 서로 다른 영어 prompt를 넣고 **Apply**합니다. 예: `cell phone`, `yellow tuna can`.
+1. **분할:** SAM3 탭의 A/B에 서로 다른 영어 prompt를 넣고 **적용·분할 시작**합니다. 예: `cell phone`, `yellow tuna can`.
    자동 번역은 없으며, SAM3 후보가 여러 개면 사용할 후보를 선택합니다.
-2. **mesh·pose 분기:** 기존 mesh는 파일·scale을 선택해 **기존 mesh로 Start**, 새 mesh는
-   **mesh 없음 · 생성 후 Start**로 생성 후 FP를 시작합니다. **Generate mesh**는 mesh만 만듭니다.
+2. **mesh·pose 분기:** FoundationPose 탭에서 기존 mesh는 파일·scale을 선택해 **추적 시작·재등록**, 새 mesh는
+   **Mesh 생성 후 추적**을 요청합니다. SAM3D 탭의 **Mesh 생성**은 mesh만 만듭니다.
 3. **표시:** 최신 카메라 RGB 위에 SAM3 mask·FP pose 축을 표시하고, 오른쪽 3D plot에서 mesh·pose를 확인합니다.
 4. **grasp:** GraspGenX로 후보를 생성하거나 기존 bundle을 불러온 뒤, 한팔/양팔 선택을 요청합니다.
    FP 없이 파일 mesh의 object-local grasp 후보만 확인할 수도 있습니다.
 
 ### VLM으로 진행
 
-**VLM 사용**을 켜고 지시문을 입력한 뒤 **VLM 인식 → Task 진행** 버튼으로 현재 RGB 한 장을 인식합니다.
+YAML에서 VLM을 켠 뒤 상단 지시문을 입력하고 **인식·진행** 버튼으로 현재 RGB 한 장을 인식합니다.
 
 - 기존 asset ID가 선택되면 저장 mesh로 FP를 시작하고, 새 물체는 SAM3D 생성 후 FP에 연결합니다.
 - 활성화한 기능 범위에서 FP → **Source grasp cache 조회·생성 → 후보 선택**까지 연결합니다.
 - Source/Target은 작업상의 물체 역할이며 팔 배정과 다릅니다. 역할을 수동 변경하면 기존 의미 기반 팔 배정을 해제합니다.
 - VLM 인식은 매 프레임 실행하지 않습니다. FP를 끄면 prompt·semantic 결과까지만 반영합니다.
 
-고정 snapshot·mask 보정·FP seed·Session 저장·표시용 hand FK 등은 [상세 사용법](docs/usage.md)을 참고합니다.
+mask 보정 중에는 원본 RGB-D를 고정하며 **실시간으로 돌아가기**로 복귀합니다.
+별도의 Snapshot 캡처·저장·불러오기, Session 저장·불러오기·export 버튼은 기본 UI에 없습니다.
+기존 파일·저장 helper API는 유지합니다. [탭별 조작·원본 입력·고급 기능](docs/usage.md)을 참고합니다.
 
 <a id="documentation"></a>
 ## 6. 문서와 저장소 구조
@@ -234,17 +289,19 @@ Claude Code CLI를 사용하는 backend는 아닙니다. [Claude API 설치·인
 | [설치·설정](docs/setup.md) | 카메라·모델·VLM별 환경, YAML 예시, robot adapter 준비 |
 | [상세 사용법](docs/usage.md) | UI 조작, Source/Target, 단위·좌표·cache, IPC 계약 |
 | [검증 이력](docs/verification.md) | 실제 모델·저장 입력·모의 backend 검증과 미검증 범위 |
+| [AprilCube 모드](docs/aprilcube.md) | 대체 worker 선택, A/B 큐브 정의, RGB mesh overlay와 공통 pose 출력 |
+| [LeRobot recording](docs/recording.md) | Optional recording environment, YAML settings, episode controls and stored features |
 | [보관 mesh](assets/meshes/README.md) | mesh 출처·원본/최적화 파일·catalog |
 
 ```text
 grasp_workbench/    # 실행 진입점, worker, camera, model adapter, IPC, Qt UI
 config.yaml        # 공유 기본값
 examples/          # 개인 설정·선택적 robot adapter 예시
-third_party/       # 원본을 수정하지 않는 공식 submodule 6개
+third_party/       # 원본을 수정하지 않는 공식 submodule 7개
 assets/meshes/     # 기존 물체 mesh·catalog
 image/             # README 예시 이미지
 docs/              # 설치·사용·검증 상세 문서
-runs/              # 생성 asset·grasp cache·snapshot·로그: Git 제외
+runs/              # 생성 asset·grasp cache·snapshot·dataset·로그: Git 제외
 ```
 
 각 기능은 독립 worker 프로세스로 실행합니다. worker 사이의 이미지·mask·mesh·pose·요청/결과는 iceoryx2로 전달합니다.
@@ -253,7 +310,7 @@ runs/              # 생성 asset·grasp cache·snapshot·로그: Git 제외
 <a id="verification"></a>
 ## 7. 검증 범위
 
-로컬 검증 환경은 **Linux x86_64·Python 3.12.3**이며, 최근 전체 **937개 테스트·Ruff 검사**를 통과했습니다.
+로컬 검증 환경은 **Linux x86_64·Python 3.12.3**이며, 최근 전체 **1068개 테스트·Ruff 검사**를 통과했습니다.
 새 PC의 전체 설치·하드웨어 실행이 검증되었다는 뜻은 아닙니다.
 
 ```bash
@@ -276,4 +333,4 @@ ruff check grasp_workbench tests
   `.gitignore`는 폴더 전체 ZIP에 적용되지 않으며, 이미 추적된 파일·과거 커밋도 별도로 확인합니다.
 - 이 저장소 자체의 라이선스는 아직 미정이며 루트 `LICENSE`가 없습니다.
   보관한 45개 mesh의 재배포 권한과 각 upstream 소스·가중치 조건은 별도로 확인해야 합니다.
-- 이 예제는 **로봇 제어·이동, 데이터 수집·학습, policy 실행, trajectory·장면 충돌 검사**를 포함하지 않습니다.
+- 이 예제는 **로봇 제어·이동, 학습, policy 실행, trajectory·장면 충돌 검사**를 포함하지 않습니다.

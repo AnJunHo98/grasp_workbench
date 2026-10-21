@@ -212,11 +212,12 @@ def test_entry_points_and_only_iceoryx2_transport_imports():
     assert capture_parser().parse_args([]).camera == "zed"
     assert capture_parser().parse_args([]).resolution == "HD720"
     assert monitor_parser().parse_args([]).timeout == 0
-    assert set(WORKERS) == {"camera", "camera_monitor", "camera_ui", "sam3", "sam3d", "foundationpose", "vlm", "graspgenx",
+    assert set(WORKERS) == {"camera", "camera_monitor", "camera_ui", "data_recorder", "aprilcube", "aprilcube_overlay", "sam3", "sam3d", "foundationpose", "vlm", "graspgenx",
                             "grasp_selection"}
     root = Path(__file__).resolve().parents[1] / "grasp_workbench"
     for relative in ("core/worker_base.py", "workers/worker_camera.py", "workers/worker_camera_monitor.py",
-                     "workers/worker_camera_ui.py", "ui/receiver.py"):
+                     "workers/worker_camera_ui.py", "workers/worker_aprilcube.py",
+                     "workers/worker_aprilcube_overlay.py", "ui/receiver.py"):
         tree = ast.parse((root / relative).read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

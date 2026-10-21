@@ -57,7 +57,7 @@ def assert_result(actual, expected):
     assert_frame(actual.frame, expected.frame)
     assert len(actual.objects) == len(expected.objects)
     for decoded, original in zip(actual.objects, expected.objects):
-        for name in ("object_id", "session_id", "mesh_path", "status", "error", "visual_mismatch_count"):
+        for name in ("object_id", "session_id", "mesh_path", "status", "error", "visual_mismatch_count", "pose_source", "diagnostics"):
             assert getattr(decoded, name) == getattr(original, name)
         if original.camera_from_object is None:
             assert decoded.camera_from_object is None
@@ -105,6 +105,37 @@ def test_result_exact_frame_pose_and_error_without_geometry_quality_policy():
     assert_result(decoded, original)
 
 
+def test_aprilcube_source_uses_the_same_pose_result_contract():
+    original = result()
+    original.objects[0].pose_source = "aprilcube"
+    decoded = decode_result(encode_result(original))
+    assert_result(decoded, original)
+    assert decoded.objects[0].pose_source == "aprilcube"
+    assert decoded.objects[1].pose_source == "foundationpose"
+
+
+def test_pose_result_preserves_optional_sdk_diagnostics_without_changing_status():
+    original = result()
+    original.objects[0].diagnostics = {"n_tags": 0, "predicted": True,
+                                       "tag_ids": [], "reproj_error": None}
+    decoded = decode_result(encode_result(original))
+    assert_result(decoded, original)
+    assert decoded.objects[0].status == "tracking"
+    assert decoded.objects[1].diagnostics is None
+
+
+def test_legacy_pose_result_without_source_defaults_to_foundationpose():
+    payload = encode_result(result())
+    size = struct.unpack_from("<I", payload)[0]
+    objects = json.loads(payload[4:4 + size])["objects"]
+    for item in objects:
+        del item["pose_source"]
+        del item["diagnostics"]
+    decoded = decode_result(rewrite_header(payload, {"objects": objects}))
+    assert all(item.pose_source == "foundationpose" for item in decoded.objects)
+    assert all(item.diagnostics is None for item in decoded.objects)
+
+
 @pytest.mark.parametrize("field,value", [
     ("object_id", 1), ("session_id", None), ("mesh_path", []), ("mesh_scale_to_m", "metres"),
     ("mask", np.ones((3, 4), np.uint8)), ("mask", np.ones((4, 3), bool)),
@@ -118,7 +149,7 @@ def test_invalid_control_wire_fields_rejected(field, value):
 
 @pytest.mark.parametrize("changes", [
     {"camera_from_object": np.eye(3)}, {"camera_from_object": np.full((4, 4), "bad")},
-    {"status": None}, {"error": {}},
+    {"status": None}, {"error": {}}, {"pose_source": None}, {"diagnostics": []},
 ])
 def test_invalid_result_wire_fields_rejected(changes):
     original = result()

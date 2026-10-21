@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 import signal
 import subprocess
 import sys
@@ -63,26 +64,54 @@ class WorkerSupervisor:
 
 
 def build_commands(args):
+    from .config import apply_worker_mode
     from .workers.registry import WORKERS
 
+    args = argparse.Namespace(**apply_worker_mode(vars(args).copy()))
     common = ["--service", args.service]
     camera = [sys.executable, "-u", "-m", WORKERS["camera"].module,
               *common, "--camera", args.camera, "--fps", str(args.fps),
               "--resolution", args.resolution]
     if args.serial is not None:
         camera += ["--serial", args.serial]
-    receiver = "camera_ui" if (args.ui or args.sam3 or args.sam3d or args.foundationpose
-                               or args.vlm or args.graspgenx or args.grasp_selection) else "camera_monitor"
+    receiver = "camera_ui" if (args.ui or args.aprilcube or args.sam3 or args.sam3d or args.foundationpose
+                               or args.vlm or args.graspgenx or args.grasp_selection or args.recording) else "camera_monitor"
     monitor = [sys.executable, "-u", "-m", WORKERS[receiver].module,
                *common, "--frames", str(args.frames), "--timeout", str(args.timeout)]
     commands = [monitor]
+    if args.recording:
+        monitor.append("--recording")
+        recording_metadata = {
+            "camera": {"type": args.camera, "resolution": args.resolution, "fps": args.fps},
+            "aprilcube": {"enabled": args.aprilcube, "fast": args.aprilcube_fast,
+                          "enable_filter": args.aprilcube_enable_filter},
+        }
+        commands.append([args.recording_python, "-u", "-m", WORKERS["data_recorder"].module,
+                         *common, "--output-dir", args.recording_output_dir,
+                         "--fps", str(args.recording_fps), "--source", args.recording_source,
+                         "--run-metadata-json", json.dumps(recording_metadata)])
     if receiver == "camera_ui" and args.asset_dir is not None:
         monitor += ["--asset-dir", args.asset_dir]
-    if receiver == "camera_ui":
+    if receiver == "camera_ui" and not args.aprilcube:
         for name in ("policy_catalog", "session_dir"):
             value = getattr(args, "vlm_" + name)
             if value is not None:
                 monitor += ["--" + name.replace("_", "-"), value]
+    if args.aprilcube:
+        monitor.append("--aprilcube")
+        cube = [args.aprilcube_python, "-u", "-m", WORKERS["aprilcube"].module,
+                *common, "--source-dir", args.aprilcube_source_dir,
+                "--config-a", args.aprilcube_config_a, "--config-b", args.aprilcube_config_b]
+        overlay = [args.aprilcube_python, "-u", "-m", WORKERS["aprilcube_overlay"].module,
+                   *common, "--overlay-alpha", str(args.aprilcube_overlay_alpha)]
+        if not args.aprilcube_enable_filter:
+            cube.append("--no-filter")
+        if not args.aprilcube_fast:
+            cube.append("--no-fast")
+        if args.aprilcube_log_timing:
+            cube.append("--log-timing")
+            overlay.append("--log-timing")
+        commands.extend((cube, overlay))
     if args.sam3:
         monitor.append("--sam3")
         commands.append([args.sam3_python, "-u", "-m", WORKERS["sam3"].module,
@@ -139,6 +168,7 @@ def build_commands(args):
 
 
 def build_parser(run_defaults=None):
+    root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     discover = commands.add_parser("cameras", help="List devices without opening a camera")
@@ -153,6 +183,29 @@ def build_parser(run_defaults=None):
     run.add_argument("--frames", type=int, default=0, help="Stop after N received frames; 0 runs continuously")
     run.add_argument("--timeout", type=float, default=0, help="Receiver timeout in seconds; 0 waits continuously")
     run.add_argument("--ui", action="store_true", help="Use the independent Qt image/plot subscriber")
+    run.add_argument("--recording", action="store_true", help="Enable the independent LeRobot dataset recorder")
+    run.add_argument("--recording-python", default=sys.executable, help="Override YAML recording.python")
+    run.add_argument("--recording-output-dir", default=str(root / "runs/datasets"),
+                     help="Override YAML recording.output_dir")
+    run.add_argument("--recording-fps", type=int, default=30, help="Override YAML recording.fps")
+    run.add_argument("--recording-source", choices=("camera", "pose"), default="pose",
+                     help="Override YAML recording.source")
+    run.add_argument("--aprilcube", action="store_true", help="Use AprilCube instead of all model workers")
+    run.add_argument("--aprilcube-python", default=sys.executable, help="Override YAML aprilcube.python")
+    run.add_argument("--aprilcube-source-dir", default=str(root / "third_party/aprilcube"),
+                     help="Override YAML aprilcube.source_dir")
+    run.add_argument("--aprilcube-config-a", default=str(root / "examples/aprilcube/cube_a.json"),
+                     help="Override YAML aprilcube.config_a")
+    run.add_argument("--aprilcube-config-b", default=str(root / "examples/aprilcube/cube_b.json"),
+                     help="Override YAML aprilcube.config_b")
+    run.add_argument("--aprilcube-overlay-alpha", type=float, default=0.65,
+                     help="Override YAML aprilcube.overlay_alpha")
+    run.add_argument("--aprilcube-no-filter", dest="aprilcube_enable_filter", action="store_false",
+                     help="Override YAML aprilcube.enable_filter")
+    run.add_argument("--aprilcube-fast", action="store_true", default=True, help="Override YAML aprilcube.fast")
+    run.add_argument("--aprilcube-no-fast", dest="aprilcube_fast", action="store_false",
+                     help="Override YAML aprilcube.fast with false")
+    run.add_argument("--aprilcube-log-timing", action="store_true", help="Override YAML aprilcube.log_timing")
     run.add_argument("--sam3", action="store_true", help="Enable UI A/B prompts and an independent SAM3 worker")
     run.add_argument("--sam3-checkpoint", default=os.environ.get("SAM3_CHECKPOINT"),
                      help="Override YAML sam3.checkpoint")
@@ -203,6 +256,8 @@ def build_parser(run_defaults=None):
     ui.add_argument("--service", default="grasp_workbench/camera/rgbd")
     ui.add_argument("--frames", type=int, default=0)
     ui.add_argument("--timeout", type=float, default=0)
+    ui.add_argument("--recording", action="store_true", help="Control an existing LeRobot recorder worker")
+    ui.add_argument("--aprilcube", action="store_true", help="Control/receive an existing AprilCube worker")
     ui.add_argument("--sam3", action="store_true", help="Control/receive an existing SAM3 worker")
     ui.add_argument("--sam3d", action="store_true", help="Request meshes from an existing SAM3D worker")
     ui.add_argument("--sam3d-depth-source", choices=("depth", "monocular"), default="depth")
@@ -221,7 +276,7 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "run":
-        from .config import load_run_config
+        from .config import APRILCUBE_DISABLED_WORKERS, apply_worker_mode, load_run_config
 
         try:
             defaults = load_run_config(args.config)
@@ -229,6 +284,9 @@ def main(argv=None):
             parser.error(str(error))
         parser = build_parser(defaults)
         args = parser.parse_args(argv)
+        apply_worker_mode(vars(args))
+        if args.aprilcube:
+            print("[workbench] AprilCube mode: skipping " + ", ".join(APRILCUBE_DISABLED_WORKERS), flush=True)
         if args.sam3 and not args.sam3_checkpoint:
             parser.error("SAM3 needs sam3.checkpoint in YAML or --sam3-checkpoint PATH")
         if args.sam3d and not args.sam3d_config_path:
@@ -245,18 +303,24 @@ def main(argv=None):
         print(json.dumps(discover(), indent=2))
         return 0
     if args.command == "ui":
+        from .config import apply_worker_mode
         from .workers.worker_camera_ui import main as ui_main
 
+        apply_worker_mode(vars(args))
         return ui_main(["--service", args.service, "--frames", str(args.frames),
-                        "--timeout", str(args.timeout), *(["--sam3"] if args.sam3 else []),
+                        "--timeout", str(args.timeout), *(["--aprilcube"] if args.aprilcube else []),
+                        *(["--recording"] if args.recording else []),
+                        *(["--sam3"] if args.sam3 else []),
                         *(["--sam3d", "--sam3d-depth-source", args.sam3d_depth_source] if args.sam3d else []),
                         *(["--sam3d-texture-baking"] if args.sam3d and args.sam3d_texture_baking else []),
                         *(["--foundationpose"] if args.foundationpose else []),
                         *(["--vlm"] if args.vlm else []),
                         *(["--graspgenx"] if args.graspgenx else []),
                         *(["--grasp-selection"] if args.grasp_selection else []),
-                        *(["--policy-catalog", args.vlm_policy_catalog] if args.vlm_policy_catalog is not None else []),
-                        *(["--session-dir", args.vlm_session_dir] if args.vlm_session_dir is not None else []),
+                        *(["--policy-catalog", args.vlm_policy_catalog]
+                          if not args.aprilcube and args.vlm_policy_catalog is not None else []),
+                        *(["--session-dir", args.vlm_session_dir]
+                          if not args.aprilcube and args.vlm_session_dir is not None else []),
                         *(["--asset-dir", args.asset_dir] if args.asset_dir is not None else [])])
     return WorkerSupervisor(build_commands(args)).run()
 

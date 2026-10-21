@@ -16,3 +16,6 @@
 [submodule "third_party/GraspGenX"]
 	path = third_party/GraspGenX
 	url = https://github.com/NVlabs/GraspGenX.git
+[submodule "third_party/aprilcube"]
+	path = third_party/aprilcube
+	url = https://github.com/younghyopark/aprilcube.git

@@ -47,6 +47,138 @@ def _option(command, name):
     return command[command.index(name) + 1]
 
 
+@pytest.mark.parametrize("cli", [[], ["--vlm", "--sam3", "--sam3d", "--foundationpose",
+                                      "--graspgenx", "--grasp-selection",
+                                      "--sam3d-texture-baking", "--graspgenx-settings", "[]",
+                                      "--grasp-selection-settings", "[]"]])
+def test_aprilcube_has_priority_over_model_flags_and_skips_model_validation(tmp_path, supervisor, cli):
+    contents = """
+ui: {enabled: false}
+aprilcube:
+  enabled: true
+  python: cube-env/bin/python
+  source_dir: vendor/aprilcube
+  config_a: cube/a.json
+  config_b: cube/b.json
+  enable_filter: false
+  fast: true
+  log_timing: true
+  overlay_alpha: 0.5
+sam3: {enabled: true}
+sam3d: {enabled: true}
+foundationpose: {enabled: true}
+vlm:
+  enabled: true
+  api_key_file: keys/unused
+  policy_catalog: policies/unused.json
+  session_dir: tasks/unused
+graspgenx: {enabled: true}
+grasp_selection: {enabled: true}
+"""
+    path = _write_config(tmp_path, contents)
+    assert entrypoint.main(["run", "--config", str(path), *cli]) == supervisor.exit_code
+    ui, cube, overlay, camera = _commands(supervisor)
+    assert [_module(command) for command in (ui, cube, overlay, camera)] == [
+        "worker_camera_ui", "worker_aprilcube", "worker_aprilcube_overlay", "worker_camera"]
+    assert "--aprilcube" in ui
+    assert cube[0] == str(tmp_path / "cube-env/bin/python")
+    assert _option(cube, "--source-dir") == str(tmp_path / "vendor/aprilcube")
+    assert _option(cube, "--config-a") == str(tmp_path / "cube/a.json")
+    assert _option(cube, "--config-b") == str(tmp_path / "cube/b.json")
+    assert overlay[0] == cube[0]
+    assert _option(overlay, "--overlay-alpha") == "0.5"
+    assert _option(overlay, "--service") == _option(cube, "--service")
+    assert "--overlay-alpha" not in cube and "--source-dir" not in overlay
+    assert "--no-filter" in cube and "--frames" not in cube
+    assert "--no-fast" not in cube and "--log-timing" in cube and "--log-timing" in overlay
+    assert "--no-filter" not in overlay and "--fast" not in overlay and "--no-fast" not in overlay
+    assert all(flag not in command for command in (ui, camera) for flag in ("--fast", "--log-timing"))
+    assert all(flag not in ui for flag in ("--sam3", "--sam3d", "--foundationpose", "--vlm",
+                                           "--graspgenx", "--grasp-selection", "--policy-catalog",
+                                           "--session-dir", "--sam3d-texture-baking"))
+    assert all("unused" not in value for command in (ui, cube, overlay, camera) for value in command)
+    assert path.read_text(encoding="utf-8") == contents
+
+
+def test_build_commands_directly_enforces_aprilcube_priority_without_mutating_caller():
+    args = entrypoint.build_parser().parse_args([
+        "run", "--aprilcube", "--sam3", "--sam3d", "--foundationpose", "--vlm",
+        "--graspgenx", "--grasp-selection", "--vlm-policy-catalog", "/unused/policies.json",
+        "--vlm-session-dir", "/unused/tasks"])
+    commands = entrypoint.build_commands(args)
+    assert [_module(command) for command in commands] == [
+        "worker_camera_ui", "worker_aprilcube", "worker_aprilcube_overlay", "worker_camera"]
+    assert args.sam3 is True and args.vlm is True
+    assert "--aprilcube" in commands[0] and "--no-filter" not in commands[1]
+    assert args.aprilcube_fast is True
+    assert "--no-fast" not in commands[1] and "--log-timing" not in commands[1]
+    assert "--log-timing" not in commands[2]
+    assert "--overlay-alpha" not in commands[1]
+    assert _option(commands[2], "--overlay-alpha") == "0.65"
+    assert _option(commands[1], "--config-a") == str(config.ROOT / "examples/aprilcube/cube_a.json")
+    assert _option(commands[1], "--config-b") == str(config.ROOT / "examples/aprilcube/cube_b.json")
+    assert all("unused" not in value for command in commands for value in command)
+
+
+def test_aprilcube_false_keeps_existing_worker_selection(tmp_path, supervisor):
+    path = _write_config(tmp_path, "aprilcube: {enabled: false}\nsam3: {enabled: true, checkpoint: sam3.pt}\n")
+    assert entrypoint.main(["run", "--config", str(path)]) == supervisor.exit_code
+    assert [_module(command) for command in _commands(supervisor)] == [
+        "worker_camera_ui", "worker_sam3", "worker_camera"]
+
+
+def test_recording_yaml_launches_independent_recorder_without_reopening_camera(tmp_path, supervisor):
+    path = _write_config(tmp_path, """
+ui: {enabled: false}
+recording:
+  enabled: true
+  python: recorder-env/bin/python
+  output_dir: datasets
+  fps: 15
+  source: camera
+""")
+    assert entrypoint.main(["run", "--config", str(path)]) == supervisor.exit_code
+    ui, recorder, camera = _commands(supervisor)
+    assert [_module(command) for command in (ui, recorder, camera)] == [
+        "worker_camera_ui", "worker_data_recorder", "worker_camera"]
+    assert "--recording" in ui and recorder[0] == str(tmp_path / "recorder-env/bin/python")
+    assert _option(recorder, "--output-dir") == str(tmp_path / "datasets")
+    assert _option(recorder, "--fps") == "15" and _option(recorder, "--source") == "camera"
+    assert "--camera" not in recorder and "--source" not in camera
+
+
+def test_aprilcube_cli_overrides_yaml_paths_filter_and_alpha(tmp_path, supervisor):
+    path = _write_config(tmp_path, "aprilcube: {enabled: false}\n")
+    assert entrypoint.main([
+        "run", "--config", str(path), "--aprilcube", "--aprilcube-python", "python3",
+        "--aprilcube-source-dir", "/example/aprilcube", "--aprilcube-config-a", "/example/a.json",
+        "--aprilcube-config-b", "/example/b.json", "--aprilcube-overlay-alpha", "0.8",
+        "--aprilcube-no-filter", "--aprilcube-fast", "--aprilcube-log-timing",
+    ]) == supervisor.exit_code
+    ui, cube, overlay, _camera = _commands(supervisor)
+    assert "--aprilcube" in ui and cube[0] == "python3"
+    assert _option(cube, "--source-dir") == "/example/aprilcube"
+    assert _option(cube, "--config-a") == "/example/a.json"
+    assert _option(cube, "--config-b") == "/example/b.json"
+    assert overlay[0] == "python3"
+    assert _option(overlay, "--overlay-alpha") == "0.8"
+    assert "--overlay-alpha" not in cube
+    assert "--no-filter" in cube
+    assert "--no-fast" not in cube and "--log-timing" in cube and "--log-timing" in overlay
+
+
+@pytest.mark.parametrize("yaml_fast,cli,expected_fast", [
+    (True, [], True), (False, [], False),
+    (True, ["--aprilcube-no-fast"], False), (False, ["--aprilcube-fast"], True),
+])
+def test_aprilcube_yaml_and_cli_fast_selection(tmp_path, supervisor, yaml_fast, cli, expected_fast):
+    path = _write_config(tmp_path, f"aprilcube: {{enabled: true, fast: {str(yaml_fast).lower()}}}\n")
+    assert entrypoint.main(["run", "--config", str(path), *cli]) == supervisor.exit_code
+    _ui, cube, overlay, _camera = _commands(supervisor)
+    assert ("--no-fast" not in cube) is expected_fast
+    assert all(flag not in overlay for flag in ("--fast", "--no-fast", "--no-filter"))
+
+
 def test_yaml_settings_create_three_workers_with_config_relative_paths(
     tmp_path, monkeypatch, supervisor
 ):

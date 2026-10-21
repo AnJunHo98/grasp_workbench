@@ -13,13 +13,160 @@
 
 ## 최근 기록 요약
 
-- 최근 기록은 **937개 테스트 통과**, Ruff·`git diff --check` 통과다.
+- 최근 기록은 **1153개 테스트 통과·2개 선택 의존성 테스트 skip**, Ruff·`git diff --check` 통과다.
 - Anthropic은 fake SDK·독립 worker/native iceoryx2와 실제 SDK의 **로컬 mock HTTP** 요청 직렬화·응답 파싱을
   확인했다. 실제 Claude 호출·실제 인증·과금·서비스 접근은 확인하지 않았다.
 - 새 PC의 전체 설치나 현재 하드웨어 연결·실물 grasp 성공을 검증했다는 뜻은 아니다.
   과거 실제 카메라/GPU 확인과 각 미검증 범위는 아래 이력에 구분해 남겼다.
 
-## 상세 이력
+## 2026-10-21 LeRobot recording worker
+
+- Added an optional independent `data_recorder` process using LeRobotDataset
+  0.6.1, with iceoryx2 controls/status and a Recording UI tab. Camera/inference
+  workers do not wait for disk writes. The official SDK submodules are unchanged.
+- Base environment: **1153 passed, 2 skipped (17.22 s)**. The two real-LeRobot
+  storage/process tests require the optional recorder environment. In the
+  isolated recorder environment, the storage, worker, native IPC and independent
+  process tests passed: **50 passed (3.93 s)**. Ruff and staged/unstaged diff
+  checks passed. UI tests use offscreen Qt, not physical screen interaction.
+- Actual ZED-M RGB-D at 1280x720 was sent through the actual AprilCube worker
+  (`fast=false`, filter enabled) and native pose IPC to the actual LeRobot
+  recorder. Start, save, restart and discard controls were sent over native
+  iceoryx2. One **11-frame episode** was saved; a second episode was discarded.
+  All workers exited normally and released the camera.
+- After finalization, the standard LeRobot reader loaded exactly one episode
+  and 11 frames. Every stored RGB and float32 metre-depth array matched the
+  corresponding source frame's SHA-256 byte hash, including the depth payload.
+  A/B matrices, source frame metadata and existing SDK diagnostics were checked
+  against that same pose packet. All **22 A/B results were tracking** in this
+  short capture; real tracking loss was not reproduced. Missing poses and
+  nonfinite depth values are covered separately by synthetic/actual-format tests.
+- LeRobot's RGB tensor reader normalizes images, and its tensor conversion can
+  cast numerical fields to float32. Exact stored pixels/matrices were checked
+  through `dataset.hf_dataset.with_format(None)`; depth was read explicitly with
+  `depth_output_unit="m"`. No policy training, robot execution or Hub upload ran.
+- An observed first-frame import delay was removed from the recording step:
+  LeRobot is now imported before the recorder reports ready. Dataset creation
+  still waits for the first frame's dimensions. This does not guarantee every
+  camera frame is recorded: the IPC remains latest-only, original sequence/time
+  gaps are preserved, and the configured FPS is a nominal dataset timeline.
+- Normal worker shutdown/finalization is required before external dataset
+  loading. `Save Episode` does not close all LeRobot Parquet writers by itself.
+- Artifacts: `runs/recording_verification/20261021_165942/collection.json`,
+  `readback.json`, worker logs and its `datasets/` directory (Git ignored).
+  The verification is a short functional collection check, not a long-duration
+  throughput benchmark or moving-object recognition evaluation.
+
+## 2026-10-21 AprilCube direct axes without meshes
+
+- With both mesh selections empty, RGB axes now use the same latest accepted
+  PoseResult as the plot. Stale RGBA is not composited, and the owned image is
+  scaled once after axis drawing. The 3D plot, pose/filter, mesh-selected path,
+  workers, and IPC payloads are unchanged. No prediction or timing gate was added.
+- Full suite: **1068 passed (15.65 s)**. Ruff and staged/unstaged diff checks
+  passed. UI tests cover same-packet plot/axis positions, independent pose-only
+  updates, stale RGBA ignored, source RGB preserved, one display redraw,
+  snapshots, rectified/nonrectified projection, and existing positive-depth
+  visibility behavior.
+- An actual SDK pose worker and native UI replay displayed both RGB axes and
+  six plot axis lines with no overlay worker or RGBA publisher. The display
+  changed 1,633 pixels while original RGB remained unchanged.
+- A same-input offscreen Qt comparison used static captured RGB-D at 1280x720
+  and a 1440x900 UI, keeping 3D drawing enabled. Four trials alternated
+  RGBA/direct/direct/RGBA with two warm-up seconds and four measured seconds.
+  Median image preparation fell from 7.9-8.0 ms to 0.7-0.8 ms; source-frame age
+  at axis paint fell from 73.8-74.2 ms to 61.2-61.9 ms. Unique painted axis
+  sequences remained about 28 Hz versus 27.5 Hz: this is a latency improvement,
+  not demonstrated improvement in update rate or physical-motion smoothness.
+- These are offscreen replay/paint-event measurements, not monitor photon
+  latency or a moving physical-cube test. Artifacts:
+  `runs/aprilcube_direct_axes_check/` (Git ignored).
+
+## 2026-10-21 AprilCube shared markers and split overlay
+
+- A/B share marker decoding per dictionary per frame through a small app-side
+  adapter; their SDK PnP/optical-flow/filter states remain independent. The
+  official submodule is unchanged. SDK per-slot preprocessing/debug drawing
+  remains in place. `fast` now defaults to true and can be disabled in YAML.
+- Run now launches camera, pose, overlay, and UI processes. The overlay worker
+  reads existing pose/control services and uses matching slot/session bindings
+  for mesh scale. The pose worker no longer renders or waits for RGBA.
+- Full suite: **1062 passed (15.82 s)**. Ruff and staged/unstaged diff checks
+  passed. Actual SDK tests cover same/different marker dictionaries, fast/filter
+  combinations, shared-call counts, and preserved cube poses. Native IPC tests
+  hold the renderer while confirming the next pose is published independently.
+- With the same captured physical-camera image (1280x720), a same-process,
+  rotating-order predictor comparison measured medians of 118.0 ms for separate
+  A/B decoding with fast off, 24.0 ms for separate decoding with fast on, and
+  15.4 ms for shared decoding with fast on. Each case used five warm-up frames
+  and 20 measured frames with SDK filtering enabled. This is not a live-camera,
+  moving-object, IPC-throughput, or UI-latency measurement.
+- A separate replay through both real workers, native iceoryx2, and the actual
+  offscreen UI displayed Tape Roll/Dongwon Tuna Can previews, two plot mesh
+  artists, and 29,368 visible RGBA pixels; raw RGB-D was preserved. Camera
+  hardware was not opened for this check and live motion quality is unverified.
+  Artifacts: `runs/aprilcube_shared_split_check/` (Git ignored).
+
+## 2026-10-21 AprilCube fast detector and stage timing
+
+- Added YAML `aprilcube.fast` and `aprilcube.log_timing`, both false by default.
+  The official SDK, filter, independent A/B state, original RGB-D, IPC payloads,
+  and UI update behavior remain unchanged. No shared-detection adapter was added.
+- Full suite: **1024 passed (15.02 s)**. Ruff and staged/unstaged `git diff --check`
+  passed. Tests cover option forwarding, stage accounting, host-monotonic source
+  age, absent timestamps, logging disabled by default, and actual SDK/native IPC
+  with synthetic input in both detector modes.
+- An independent worker replayed one captured physical-camera image at 1280x720
+  through native iceoryx2, without camera hardware, meshes, or UI. With filtering
+  and timing logs enabled, standard/fast/fast/standard trials each measured 20
+  frames after three warm-up frames. Predictor medians were 117.6-118.1 ms in
+  standard mode and 25.0-25.5 ms in fast mode; total worker medians were
+  121.8-122.1 ms and 28.6-29.1 ms respectively.
+- This static replay does not establish live UI latency, moving-cube detection
+  reliability, jitter, or ground-truth pose accuracy. Private local configuration
+  was not changed. Artifacts: `runs/aprilcube_fast_comparison/` (Git ignored).
+
+## 2026-10-20 Worker 탭 UI
+
+- 상단 VLM 입력·접이식 Task 상세, 좌측 worker별 ON/OFF 탭과 설정, 우측 공통 RGB·3D로 재배치했다.
+  Snapshot·Session·export 버튼은 제거했지만 저장 helper API와 mask 보정의 정확한 원본 프레임 고정은
+  유지했다. 고정 검토 중에만 실시간 복귀 버튼을 표시한다.
+- 전체 **1004 passed (14.77 s)**, Ruff·staged/unstaged `git diff --check` 통과.
+  새 탭 테스트 13개는 비활성 탭, navigation 부작용 없음, VLM 상단 배치, 고급 영역, SAM3-only 보정,
+  Selection-only bundle 불러오기, AprilCube 우선 모드를 검사한다.
+- UI worker는 실제 선택한 flags를 전달하고 CameraWindow가 기존 표시용 구독을 구성하도록 했다.
+  구독 기능이 필요하다는 이유만으로 SAM3 worker가 ON으로 표시되지 않는다.
+  이번 layout 작업 시작 시점과 비교해 UI 밖 backend Python 파일 57개의 SHA-256이 모두 일치한다.
+- **일반 모드 화면:** 모의 모델 응답과 합성 RGB로 7개 탭, A/B mesh·pose, 1440×900 및 1280×800 화면을
+  확인했다. 탭을 바꾸는 동안 원본 RGB·plot·요청 수가 유지되고, 좁은 화면에서도 pose 제목이 잘리지 않는다.
+  이 확인은 실제 VLM API·SAM3·FP 추론이나 실제 카메라 확인이 아니다.
+- **AprilCube 모드 화면:** 공식 SDK filter=true·독립 worker·native iceoryx2·실제 UI receiver를 합성
+  태그 영상으로 다시 연결했다. Camera/AprilCube만 ON, 상단 VLM 비활성, Tape Roll·Dongwon Tuna Can의
+  RGB overlay와 두 plot mesh를 확인했다. 원본 RGB는 보존했으며 실제 카메라/인쇄 큐브 검증은 아니다.
+- 산출물: `runs/worker_tabs_review/normal_result.json`, `normal_*.png`,
+  `aprilcube_result.json`, `aprilcube.png` 및 재현 스크립트 (Git 제외).
+
+## 2026-10-20 AprilCube 대체 worker
+
+- 공식 `younghyopark/aprilcube`의 `9d679b56cf15be6126c846593fd37471cf8f0ad0`을 수정 없는
+  submodule로 추가했다. 이전 앱의 vendored SDK 로컬 패치는 복사하지 않았다.
+- 전체 **989 passed (14.55 s)**, Ruff·`git diff --check`·현재 UI 환경의 `uv pip check` 통과.
+  AprilCube YAML 우선순위, 기존 일반 모드, UI/receiver 직접 실행 시 6개 기능 제외,
+  공통 pose의 `pose_source`와 이전 메시지 기본값을 검사했다.
+- **실제 SDK + 합성 입력:** 1280×720 RGB에 `4x4_100` 마커를 투영했다. A(48–71)·B(0–23)의
+  보이는 면에서 각 4개 태그를 검출했다. 알려진 camera pose와 cube→mesh 변환을 이용해 metre pose와
+  scale 적용을 검사했으며, 실물 정확도 평가가 아니다.
+- **실제 독립 worker + native iceoryx2:** 실제 SDK가 추정한 A/B pose를 기존
+  `/foundationpose/results`로 수신하고, 선택 mesh의 RGBA를 `/aprilcube/overlay`로 수신했다.
+  원본 RGB-D와 mesh 파일은 변하지 않았으며, decoder 배열은 endpoint 종료 뒤에도 유지된다.
+- **실제 SDK + offscreen UI:** 공식 SDK filter=true로 독립 worker→기존 UI receiver를 연결하고,
+  보관한 Tape Roll·Dongwon Tuna Can을 선택해 RGB 반투명 overlay와 오른쪽 mesh/pose plot을 확인했다.
+  두 mesh artist와 overlay 유효 픽셀 40,746개를 확인했다. 최신 camera sequence=8,
+  pose sequence=7, overlay sequence=2로 표시용 최신 레이어 재사용이며 동기 측정이라고 주장하지 않는다.
+- 산출물: `runs/aprilcube_synthetic_check/{ui_check.py,result.json,ui.png,worker.log}` (Git 제외).
+  **실제 카메라와 인쇄 큐브의 검출·정확도는 이번 패치에서 검증하지 않았다.**
+
+## 이전 상세 이력
 
 ### 2026-10-19 실제 확인
 
