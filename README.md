@@ -18,6 +18,7 @@ FFW·ROS는 필수가 아니며, **실제 로봇 이동·관절 명령은 수행
 - [문서와 저장소 구조](#documentation)
 - [검증 범위](#verification)
 - [공유 시 주의사항](#sharing)
+- [상태](#status)
 
 ## 주요 기능
 
@@ -310,7 +311,7 @@ runs/              # 생성 asset·grasp cache·snapshot·dataset·로그: Git �
 <a id="verification"></a>
 ## 7. 검증 범위
 
-로컬 검증 환경은 **Linux x86_64·Python 3.12.3**이며, 최근 전체 **1068개 테스트·Ruff 검사**를 통과했습니다.
+로컬 검증 환경은 **Linux x86_64·Python 3.12.3**이며, 최근 전체 **1153개 테스트(선택 의존성 테스트 2개 skip)·Ruff 검사**를 통과했습니다.
 새 PC의 전체 설치·하드웨어 실행이 검증되었다는 뜻은 아닙니다.
 
 ```bash
@@ -334,3 +335,9 @@ ruff check grasp_workbench tests
 - 이 저장소 자체의 라이선스는 아직 미정이며 루트 `LICENSE`가 없습니다.
   보관한 45개 mesh의 재배포 권한과 각 upstream 소스·가중치 조건은 별도로 확인해야 합니다.
 - 이 예제는 **로봇 제어·이동, 학습, policy 실행, trajectory·장면 충돌 검사**를 포함하지 않습니다.
+
+<a id="status"></a>
+## 9. 상태
+
+`0.1.0` 개발 버전이며 2026-10-20부터 기능을 하나씩 추가·검증하고 있습니다. 가장 최근에 추가한 기능은
+AprilCube 대체 모드와 LeRobot recording이며, 날짜별 검증 내용은 [검증 이력](docs/verification.md)에 있습니다.
