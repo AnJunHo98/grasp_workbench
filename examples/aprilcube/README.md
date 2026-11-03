@@ -15,10 +15,10 @@ translation in metres. Slots A/B do not assign task roles or robot arms.
 
 Source definitions:
 
-- `ffw_object_pose_system/configs/aprilcube/aprilcube_3_2x2x2_40_100.json`
+- `aprilcube_3_2x2x2_40_100.json` (author's AprilCube configs)
   -> `cube_a.json`, SHA-256
   `f3390e4425ac0dd6e9f5bd178b176e4b49d055c2210d3d6981758fa07e4d5620`
-- `ffw_object_pose_system/configs/aprilcube/aprilcube_2x2x2_40_100.json`
+- `aprilcube_2x2x2_40_100.json` (author's AprilCube configs)
   -> `cube_b.json`, SHA-256
   `fb9bc7c22ce6445a85b3e64a4debdf410d804d3590a6019f7baceac6412c4422`
 
