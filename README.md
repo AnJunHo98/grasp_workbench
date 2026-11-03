@@ -1,46 +1,49 @@
 # Grasp Workbench
 
-**RGB-D 카메라에서 물체의 mesh·pose·grasp 후보까지 연결하는 선택형 worker 예제입니다.**
+English | [한국어](README.ko.md)
 
-카메라·VLM·모델·gripper 환경은 사용하는 사람이 준비합니다. 이 저장소는 각 기능을 독립 프로세스와
-**iceoryx2**로 연결하고, 필요한 단계만 YAML로 켜서 사용하는 최소 통합 예제를 제공합니다.
-FFW·ROS는 필수가 아니며, **실제 로봇 이동·관절 명령은 수행하지 않습니다.**
+**An example of optional workers that take an RGB-D camera all the way to object meshes, poses and grasp candidates.**
 
-![입력 장면과 물체 mesh·grasp 시각화 예시](image/asset.png)
+You bring your own camera, VLM, models and gripper. This repository connects each function as an independent process over
+**iceoryx2** and gives a minimal integration example where you turn on only the stages you need in YAML.
+FFW and ROS are not required, and **it never moves a real robot or sends joint commands.**
 
-## 목차
+![Example input scene with object mesh and grasp visualization](image/asset.png)
 
-- [빠른 시작](#quick-start)
-- [어디까지 사용할지 선택](#stages)
-- [YAML 설정](#configuration)
-- [VLM 선택](#vlm)
-- [UI 사용 흐름](#workflow)
-- [문서와 저장소 구조](#documentation)
-- [검증 범위](#verification)
-- [공유 시 주의사항](#sharing)
+## Contents
 
-## 주요 기능
+- [Quick start](#quick-start)
+- [Choosing which stages to use](#stages)
+- [YAML configuration](#configuration)
+- [Choosing a VLM](#vlm)
+- [UI workflow](#workflow)
+- [Documentation and repository layout](#documentation)
+- [Verification](#verification)
+- [Notes on sharing](#sharing)
+- [Status](#status)
 
-| 기능 | 역할 |
+## Features
+
+| Feature | Role |
 |---|---|
-| Camera | ZED·RealSense RGB-D 연결 예제 |
-| VLM · 선택 | GPT API / Codex CLI / Claude API로 물체·영어 prompt·작업 역할 인식 |
-| SAM3 | A/B 두 prompt의 연속 분할, 후보 선택, 박스·포인트 보정 |
-| SAM3D · 선택 | 고정한 RGB-D·mask에서 mesh 생성. 기존 mesh가 있으면 생략 가능 |
-| FoundationPose | mesh 등록·연속 pose 추적, 영상 overlay·3D mesh 표시 |
-| AprilCube · 대체 모드 | 태그 기반 A/B pose 추정·선택 mesh의 RGB overlay. 일반 모델 worker는 실행하지 않음 |
-| GraspGenX | mesh 기준 grasp 후보 생성·저장·재사용 |
-| Grasp selection · 선택 | 한팔/양팔 후보 선택, 로봇 연결 시 base 좌표 변환·endpoint IK 확인 |
+| Camera | Example connections for ZED and RealSense RGB-D |
+| VLM · optional | Recognizes objects, English prompts and task roles with the GPT API / Codex CLI / Claude API |
+| SAM3 | Continuous segmentation for two prompts (A/B), candidate selection, box/point refinement |
+| SAM3D · optional | Builds a mesh from a frozen RGB-D frame and mask; can be skipped if a mesh already exists |
+| FoundationPose | Mesh registration and continuous pose tracking, video overlay and 3D mesh view |
+| AprilCube · alternative mode | Tag-based A/B pose estimation and RGB overlay of a chosen mesh; the regular model workers do not run |
+| GraspGenX | Generates, stores and reuses grasp candidates for a mesh |
+| Grasp selection · optional | Single-arm / dual-arm candidate selection; with a robot connected, base-frame transform and endpoint IK check |
 | Recording · optional | Independent LeRobotDataset recorder for original RGB-D and A/B pose results |
 
-**A/B는 물체 슬롯이지 좌/우 팔이 아닙니다.** VLM은 의미 정보를 만들며 mask·수치 pose·실제 접촉 상태를 추정하지 않습니다.
+**A/B are object slots, not left/right arms.** The VLM produces semantic information; it does not estimate masks, numeric poses or real contact states.
 
 <a id="quick-start"></a>
-## 1. 빠른 시작
+## 1. Quick start
 
-### 저장소와 기본 UI 환경 설치
+### Install the repository and the base UI environment
 
-현재는 **Git checkout + editable 설치(`-e`)**를 기준으로 합니다. Private 저장소 접근 권한이 필요합니다.
+The supported setup is a **Git checkout with an editable install (`-e`)**.
 
 ```bash
 git clone --recurse-submodules https://github.com/AnJunHo98/grasp_workbench.git
@@ -50,68 +53,68 @@ source .venv/bin/activate
 python -m pip install -e '.[ui,test]'
 ```
 
-이미 clone했다면 `git submodule update --init --recursive`로 submodule을 받습니다.
-루트 YAML·mesh·submodule을 포함하는 독립 wheel 배포는 지원하지 않습니다.
+If you have already cloned it, fetch the submodules with `git submodule update --init --recursive`.
+A standalone wheel that bundles the root YAML, meshes and submodules is not supported.
 
-### 카메라 준비
+### Prepare the camera
 
-| 카메라 | 추가 준비 |
+| Camera | What else you need |
 |---|---|
-| ZED · 기본값 | 해당 기기의 ZED SDK와 현재 Python 환경의 `pyzed` |
-| RealSense | `python -m pip install -e '.[realsense]'`, 장치·드라이버·접근 권한 |
+| ZED · default | The ZED SDK for your device and `pyzed` in the current Python environment |
+| RealSense | `python -m pip install -e '.[realsense]'`, plus the device, driver and access permissions |
 
-submodule을 받는 것만으로 카메라 SDK나 모델 환경이 설치되지는 않습니다.
-카메라별 방법은 [설치 안내](docs/setup.md#camera)를 참고합니다.
+Fetching the submodules does not install any camera SDK or model environment.
+See the [setup guide](docs/setup.md#camera) for each camera.
 
-### 개인 설정 후 실행
+### Create your local config and run
 
 ```bash
-# 기존 config.local.yaml이 있으면 덮어쓰지 않습니다.
+# Does not overwrite an existing config.local.yaml.
 cp -n examples/config.local.example.yaml config.local.yaml
 ```
 
-`config.local.yaml`에서 카메라 종류를 정합니다. 예를 들어 RealSense를 사용한다면:
+Choose the camera type in `config.local.yaml`. For example, with RealSense:
 
 ```yaml
 camera:
   type: realsense          # zed / realsense
-  serial: null             # null: SDK 기본 장치
+  serial: null             # null: the SDK's default device
 ```
 
-공유 기본값과 예시 파일은 **카메라·UI 켜짐, 모든 선택 모델 꺼짐**입니다.
-모델을 사용하려면 아래 단계표대로 켜고 [모델별 설치·경로](docs/setup.md)를 준비합니다.
+The shared defaults and the example file have **the camera and UI on and every optional model off**.
+To use a model, turn it on following the stage table below and prepare its [installation and paths](docs/setup.md).
 
 ```bash
 grasp-workbench run
 ```
 
-Ctrl+C 또는 UI 종료로 해당 실행의 worker를 정리합니다. 일반 실행에 긴 옵션을 붙일 필요는 없습니다.
+Ctrl+C or closing the UI stops that run's workers. A normal run does not need long command-line options.
 
 <a id="stages"></a>
-## 2. 어디까지 사용할지 선택
+## 2. Choosing which stages to use
 
-다음 표의 값은 각 YAML section의 **`enabled`**입니다. VLM을 끈 수동 흐름 기준이며 필요한 조합을 합칠 수 있습니다.
+The values in this table are each YAML section's **`enabled`**. They assume the manual flow with the VLM off; you can combine rows as needed.
 
-| 사용할 범위 | `sam3` | `sam3d` | `foundationpose` | `graspgenx` | `grasp_selection` |
+| What you want | `sam3` | `sam3d` | `foundationpose` | `graspgenx` | `grasp_selection` |
 |---|---|---|---|---|---|
-| 카메라 영상만 | false | false | false | false | false |
-| mask까지만 | true | false | false | false | false |
-| mesh 생성까지만 | true | true | false | false | false |
-| 기존 mesh로 pose | true | false | true | false | false |
-| 새 mesh 생성 후 pose | true | true | true | false | false |
-| 파일 mesh에서 grasp 후보만 | false | false | false | true | false |
-| 저장 grasp 선택·양팔 조합만 | false | false | false | false | true |
-| 새 mesh → pose → grasp → 선택 | true | true | true | true | true |
+| Camera view only | false | false | false | false | false |
+| Up to masks | true | false | false | false | false |
+| Up to mesh generation | true | true | false | false | false |
+| Pose with an existing mesh | true | false | true | false | false |
+| Pose after generating a new mesh | true | true | true | false | false |
+| Grasp candidates for a mesh file only | false | false | false | true | false |
+| Selection / dual-arm pairing of saved grasps only | false | false | false | false | true |
+| New mesh → pose → grasp → selection | true | true | true | true | true |
 
-- **VLM 인식을 사용하려면** 위 조합에 `vlm.enabled: true`와 backend 설정을 추가합니다.
-- **`enabled: true`는 worker 시작**입니다. 버튼을 누르기 전부터 모든 추론을 실행한다는 뜻은 아닙니다.
-  SAM3는 prompt 적용 이후 연속 처리하고, 나머지는 버튼 또는 명시적인 VLM/Task 진행으로 요청합니다.
-- 각 모델 worker는 따로 켭니다. VLM·FP·SAM3D를 켠다고 SAM3 backend까지 자동 시작하지 않습니다.
-- `run`은 항상 카메라를 시작합니다. **`camera.enabled`는 없습니다.**
-- 모델 기능을 켜면 `ui.enabled: false`여도 UI를 사용합니다. 카메라만 콘솔로 확인할 때는 모든 모델을 끄고
-  `ui.enabled: false`로 설정합니다. Headless 모델 실행 설정으로 해석하지 않습니다.
+- **To use VLM recognition**, add `vlm.enabled: true` and the backend settings to the combination above.
+- **`enabled: true` starts the worker.** It does not mean every inference runs before you press a button.
+  SAM3 processes continuously after a prompt is applied; the others run on a button press or an explicit VLM/Task request.
+- Each model worker is turned on separately. Turning on the VLM, FP or SAM3D does not start the SAM3 backend.
+- `run` always starts the camera. **There is no `camera.enabled`.**
+- If any model is on, the UI is used even with `ui.enabled: false`. To check only the camera from the console, turn every model off
+  and set `ui.enabled: false`. This is not a headless model-execution setting.
 
-### AprilCube 대체 모드
+### AprilCube alternative mode
 
 ```yaml
 aprilcube:
@@ -119,11 +122,11 @@ aprilcube:
   fast: true
 ```
 
-이 모드에서는 **Camera + AprilCube Pose + AprilCube Overlay + UI** 네 프로세스를 실행합니다.
-`recording.enabled: true`이면 독립 수집 worker도 함께 실행합니다. VLM·SAM3·SAM3D·FoundationPose·GraspGenX·
-grasp selection은 설정이 `true`여도 실행하지 않습니다. YAML은 수정하지 않으므로 AprilCube를 다시
-`false`로 바꾸면 기존 설정대로 돌아갑니다. pose는 기존 FoundationPose 결과 채널로 발행하고 출처를
-`aprilcube`로 구분합니다. [설치·큐브 정의·mesh 배치·IPC](docs/aprilcube.md)
+This mode runs four processes: **Camera + AprilCube Pose + AprilCube Overlay + UI**.
+With `recording.enabled: true` the independent recording worker runs as well. VLM, SAM3, SAM3D, FoundationPose, GraspGenX and
+grasp selection do not run even if they are set to `true`. The YAML itself is not changed, so setting AprilCube back to
+`false` restores your previous setup. Poses are published on the existing FoundationPose result channel, marked with
+source `aprilcube`. [Installation, cube definitions, mesh placement and IPC](docs/aprilcube.md)
 
 ### Optional LeRobot data recording
 
@@ -145,50 +148,50 @@ it waits for AprilCube or FoundationPose results. Use `camera` for RGB-D-only co
 The recorder stays available in AprilCube mode. [Installation and storage contract](docs/recording.md)
 
 <a id="configuration"></a>
-## 3. YAML 설정
+## 3. YAML configuration
 
-| 파일 | 용도 |
+| File | Purpose |
 |---|---|
-| [`config.yaml`](config.yaml) | 공유 기본값·전체 설정 구조 |
-| `config.local.yaml` | 사용자별 on/off·장치·모델 경로·인증 파일 경로. Git 제외 |
-| [`examples/config.local.example.yaml`](examples/config.local.example.yaml) | 개인 설정을 작성할 때 참고할 전체 예시 |
-| [모델별 설치·설정](docs/setup.md) | checkpoint·독립 Python 환경·VLM 인증 준비 |
+| [`config.yaml`](config.yaml) | Shared defaults and the full configuration structure |
+| `config.local.yaml` | Per-user on/off switches, devices, model paths and credential file paths. Git-ignored |
+| [`examples/config.local.example.yaml`](examples/config.local.example.yaml) | Full example to start your local config from |
+| [Per-model setup](docs/setup.md) | Checkpoints, separate Python environments, VLM credentials |
 
-일반 `run`은 저장소의 `config.yaml`을 읽고, `config.local.yaml`에 **적힌 항목만 덮어씁니다.**
-실행한 현재 폴더가 아니라 저장소 위치 기준입니다. 상대 경로는 해당 값을 정의한 YAML 파일의 폴더 기준이며,
-각 모델의 `python: null`은 현재 실행 중인 Python을 사용합니다.
+A normal `run` reads the repository's `config.yaml` and overrides **only the keys present in `config.local.yaml`.**
+Paths are resolved relative to the repository, not the current directory: a relative path is relative to the folder of the YAML file that defines it,
+and `python: null` for a model means the Python that is currently running.
 
-주요 선택 옵션은 다음과 같습니다. 활성화 여부와 모델 필수 경로는 별도로 설정합니다.
+The main optional settings are below. Whether each worker is enabled, and each model's required paths, are set separately.
 
 ```yaml
 sam3d:
-  depth_source: depth       # depth: 실측 RGB-D / monocular: RGB에서 깊이 추정
-  texture_baking: false     # true: UV·material을 보존한 texture GLB 생성
+  depth_source: depth       # depth: measured RGB-D / monocular: depth predicted from RGB
+  texture_baking: false     # true: textured GLB that keeps UVs and materials
 
 graspgenx:
-  gripper_id: franka_panda  # 사용자가 준비한 gripper ID
-  assets_dir: null          # null: GraspGenX 기본 assets. 별도 descriptor 경로 지정 가능
+  gripper_id: franka_panda  # gripper ID you prepared
+  assets_dir: null          # null: GraspGenX default assets; or a custom descriptor path
 
 grasp_selection:
-  robot_config: null        # null: 로봇 없이 object-local 후보 선택·표시
+  robot_config: null        # null: object-local candidate selection and display without a robot
 ```
 
-`depth` 결과는 실측 depth 기반 metre 좌표를 사용합니다. `monocular`는 **예측 scale**이며 실제 크기·거리가 보장되지 않습니다.
-texture는 표면 표현 옵션이고 pose·grasp 생성의 필수 조건이 아닙니다. [크기·좌표·cache 설명](docs/usage.md#sam3d)
+`depth` results use metre coordinates from measured depth. `monocular` gives a **predicted scale**; real size and distance are not guaranteed.
+Texture only affects surface appearance and is not required for pose or grasp generation. [Size, coordinates and cache](docs/usage.md#sam3d)
 
 <a id="vlm"></a>
-## 4. VLM 선택
+## 4. Choosing a VLM
 
-기존 flat `vlm` section의 **`backend`와 `model`**을 함께 설정합니다. VLM을 끄면 UI에서 A/B prompt를 직접 입력합니다.
+Set **`backend` and `model`** together in the flat `vlm` section. With the VLM off you type the A/B prompts in the UI.
 
-| `backend` | 연결 방식 | 준비할 것 |
+| `backend` | Connection | What you need |
 |---|---|---|
-| `openai_api` | GPT / OpenAI Responses API | `.[vlm]`, 자신의 모델 ID·API 키 |
-| `codex_cli` | 설치된 Codex CLI의 단발 인식 | CLI 설치·자신의 로그인, Python Pillow |
-| `anthropic_api` | Claude Messages API | `.[vlm-anthropic]`, 자신의 모델 ID·Anthropic API 키 |
+| `openai_api` | GPT / OpenAI Responses API | `.[vlm]`, your own model ID and API key |
+| `codex_cli` | One-shot recognition with an installed Codex CLI | CLI installed and logged in with your own account, Python Pillow |
+| `anthropic_api` | Claude Messages API | `.[vlm-anthropic]`, your own model ID and Anthropic API key |
 
-아래 **셋 중 하나의 `vlm` 블록**을 개인 설정에 사용합니다. 환경 생성·SDK 설치·로그인 방법은
-[설치 안내](docs/setup.md)에 있습니다.
+Use **one of the three `vlm` blocks below** in your local config. Environment creation, SDK installation and login are in the
+[setup guide](docs/setup.md).
 
 ### GPT API
 
@@ -201,7 +204,7 @@ vlm:
   api_key_file: .secrets/openai_api_key.txt
 ```
 
-[GPT API 설치·인증](docs/setup.md#vlm-openai)
+[GPT API setup and authentication](docs/setup.md#vlm-openai)
 
 ### Codex CLI
 
@@ -215,8 +218,8 @@ vlm:
   api_key_file: null
 ```
 
-사용자가 설치한 CLI의 인증 상태를 사용하며 지정 API 키 파일은 읽지 않습니다.
-[CLI 설치·로그인](docs/setup.md#vlm-codex)
+Uses the login state of the CLI you installed; it does not read an API key file.
+[CLI installation and login](docs/setup.md#vlm-codex)
 
 ### Claude API
 
@@ -229,108 +232,114 @@ vlm:
   api_key_file: .secrets/anthropic_api_key.txt
 ```
 
-`model`은 자신의 계정에서 **이미지 입력·구조화 출력을 지원하는 실제 모델 ID**로 바꿉니다.
-Claude Code CLI를 사용하는 backend는 아닙니다. [Claude API 설치·인증](docs/setup.md#vlm-anthropic)
+Replace `model` with **a real model ID on your account that supports image input and structured output**.
+This backend does not use the Claude Code CLI. [Claude API setup and authentication](docs/setup.md#vlm-anthropic)
 
-- backend를 바꿔도 모델 이름이나 인증은 자동 변경하지 않습니다. 실패 시 다른 provider로 자동 fallback하지 않습니다.
-- API backend의 `api_key_file: null`은 각각 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 환경변수를 사용합니다.
-- 키 값은 YAML에 쓰지 않습니다. 각 사용자가 준비한 Git 제외 파일이나 환경변수를 사용합니다.
-- 새 VLM은 공통 결과를 반환하는 adapter를 기존 VLM worker에 등록합니다. [다른 VLM 추가 방법](docs/setup.md#custom-vlm)
+- Changing the backend does not change the model name or credentials. There is no automatic fallback to another provider on failure.
+- For the API backends, `api_key_file: null` uses the `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` environment variable.
+- Never put key values in YAML. Each user keeps them in a Git-ignored file or an environment variable.
+- To add another VLM, register an adapter that returns the common result in the existing VLM worker. [Adding another VLM](docs/setup.md#custom-vlm)
 
 <a id="workflow"></a>
-## 5. UI 사용 흐름
+## 5. UI workflow
 
-상단에는 **VLM 지시문·인식 버튼·상태**를 두고, Source/Target 역할 편집과 Task 상세는 접어서 표시합니다.
-왼쪽의 worker 탭을 고르면 해당 기능의 입력·버튼만 보이고, 오른쪽의 **실시간 RGB와 Mesh / Pose 3D**는 공통으로 유지합니다.
+The top bar holds the **VLM instruction, the recognition button and status**; Source/Target role editing and task details are collapsed below it.
+Choosing a worker tab on the left shows only that function's inputs and buttons, while the **live RGB and Mesh / Pose 3D view** on the right stay the same.
 
-| 왼쪽 탭 | 주요 조작 |
+| Left tab | Main actions |
 |---|---|
-| Camera | 장치·수신 상태 확인. 시작 시 자동 연결 |
-| SAM3 | A/B prompt 적용·분할 중지, 후보 선택·mask 보정 |
-| SAM3D | A/B mesh 생성·결과 선택 |
-| FoundationPose | A/B mesh 선택·scale, 추적 시작·재등록/중지, mesh 생성 후 추적 |
-| GraspGenX | A/B 후보 생성·다시 생성·기존 후보 불러오기 · bundle |
-| Grasp Selection | 한팔/양팔 mode·대상 선택, 후보 선택·다시 평가 |
-| AprilCube | A/B mesh·scale·cube→mesh XYZ/RPY 적용 |
+| Camera | Device and stream status; connects automatically on start |
+| SAM3 | Apply A/B prompts, stop segmentation, choose candidates, refine masks |
+| SAM3D | Generate A/B meshes and choose results |
+| FoundationPose | Choose A/B mesh and scale, start/re-register/stop tracking, track after generating a mesh |
+| GraspGenX | Generate / regenerate A/B candidates, load existing candidates · bundles |
+| Grasp Selection | Single/dual-arm mode and targets, choose and re-evaluate candidates |
+| AprilCube | Apply A/B mesh, scale and cube→mesh XYZ/RPY |
 | Recording | Start Recording / Save Episode / Discard Episode; dataset path and frame count |
 
-**worker on/off는 YAML에서만 정합니다.** 탭 선택은 프로세스를 시작·중지하거나 추론을 요청하지 않습니다.
-꺼진 worker 탭은 OFF 안내만 표시하며, AprilCube 모드에서는 Camera·AprilCube와 별도로 켠 Recording만 활성화됩니다.
-FP seed refinement와 표시용 hand FK·로봇 상세는 해당 탭의 **고급** 영역에 있습니다.
+**Workers are switched on and off only in YAML.** Choosing a tab does not start or stop a process or request inference.
+A tab for a worker that is off only shows an OFF notice; in AprilCube mode only Camera, AprilCube and a separately enabled Recording are active.
+FP seed refinement, display-only hand FK and robot details are in each tab's **Advanced** area.
 
-### 수동 prompt로 진행
+### Manual prompts
 
-1. **분할:** SAM3 탭의 A/B에 서로 다른 영어 prompt를 넣고 **적용·분할 시작**합니다. 예: `cell phone`, `yellow tuna can`.
-   자동 번역은 없으며, SAM3 후보가 여러 개면 사용할 후보를 선택합니다.
-2. **mesh·pose 분기:** FoundationPose 탭에서 기존 mesh는 파일·scale을 선택해 **추적 시작·재등록**, 새 mesh는
-   **Mesh 생성 후 추적**을 요청합니다. SAM3D 탭의 **Mesh 생성**은 mesh만 만듭니다.
-3. **표시:** 최신 카메라 RGB 위에 SAM3 mask·FP pose 축을 표시하고, 오른쪽 3D plot에서 mesh·pose를 확인합니다.
-4. **grasp:** GraspGenX로 후보를 생성하거나 기존 bundle을 불러온 뒤, 한팔/양팔 선택을 요청합니다.
-   FP 없이 파일 mesh의 object-local grasp 후보만 확인할 수도 있습니다.
+1. **Segment:** in the SAM3 tab, enter two different English prompts for A/B and press **Apply · start segmentation**, e.g. `cell phone`, `yellow tuna can`.
+   There is no automatic translation; if SAM3 finds several candidates, choose the one to use.
+2. **Mesh / pose:** in the FoundationPose tab, for an existing mesh choose the file and scale and press **Start tracking · re-register**; for a new mesh
+   request **Track after generating mesh**. **Generate mesh** in the SAM3D tab only creates the mesh.
+3. **Display:** SAM3 masks and FP pose axes are drawn over the latest camera RGB; check the mesh and pose in the 3D plot on the right.
+4. **Grasp:** generate candidates with GraspGenX or load an existing bundle, then request single- or dual-arm selection.
+   You can also view only the object-local grasp candidates of a mesh file, without FP.
 
-### VLM으로 진행
+### With the VLM
 
-YAML에서 VLM을 켠 뒤 상단 지시문을 입력하고 **인식·진행** 버튼으로 현재 RGB 한 장을 인식합니다.
+Turn the VLM on in YAML, type an instruction in the top bar and press **Recognize · proceed** to recognize the current RGB frame.
 
-- 기존 asset ID가 선택되면 저장 mesh로 FP를 시작하고, 새 물체는 SAM3D 생성 후 FP에 연결합니다.
-- 활성화한 기능 범위에서 FP → **Source grasp cache 조회·생성 → 후보 선택**까지 연결합니다.
-- Source/Target은 작업상의 물체 역할이며 팔 배정과 다릅니다. 역할을 수동 변경하면 기존 의미 기반 팔 배정을 해제합니다.
-- VLM 인식은 매 프레임 실행하지 않습니다. FP를 끄면 prompt·semantic 결과까지만 반영합니다.
+- If an existing asset ID is chosen, FP starts with the saved mesh; a new object goes through SAM3D first and then FP.
+- Within the enabled functions, the flow continues from FP to **looking up or generating the Source grasp cache, then candidate selection**.
+- Source/Target are task roles of the objects, not arm assignments. Changing a role manually clears the previous semantic arm assignment.
+- VLM recognition does not run every frame. With FP off, only the prompts and semantic results are applied.
 
-mask 보정 중에는 원본 RGB-D를 고정하며 **실시간으로 돌아가기**로 복귀합니다.
-별도의 Snapshot 캡처·저장·불러오기, Session 저장·불러오기·export 버튼은 기본 UI에 없습니다.
-기존 파일·저장 helper API는 유지합니다. [탭별 조작·원본 입력·고급 기능](docs/usage.md)을 참고합니다.
+While refining a mask the original RGB-D frame is frozen; press **Back to live** to return.
+The default UI has no separate snapshot capture/save/load or session save/load/export buttons.
+The existing file and save helper APIs remain. See [tab-by-tab actions, original inputs and advanced features](docs/usage.md).
 
 <a id="documentation"></a>
-## 6. 문서와 저장소 구조
+## 6. Documentation and repository layout
 
-| 문서 | 내용 |
+| Document | Contents |
 |---|---|
-| [설치·설정](docs/setup.md) | 카메라·모델·VLM별 환경, YAML 예시, robot adapter 준비 |
-| [상세 사용법](docs/usage.md) | UI 조작, Source/Target, 단위·좌표·cache, IPC 계약 |
-| [검증 이력](docs/verification.md) | 실제 모델·저장 입력·모의 backend 검증과 미검증 범위 |
-| [AprilCube 모드](docs/aprilcube.md) | 대체 worker 선택, A/B 큐브 정의, RGB mesh overlay와 공통 pose 출력 |
+| [Setup](docs/setup.md) | Per-camera, per-model and per-VLM environments, YAML examples, robot adapter preparation |
+| [Detailed usage](docs/usage.md) | UI actions, Source/Target, units, coordinates and cache, IPC contracts |
+| [Verification history](docs/verification.md) | Real-model, saved-input and mock-backend verification, and what is not verified |
+| [AprilCube mode](docs/aprilcube.md) | Alternative worker selection, A/B cube definitions, RGB mesh overlay and common pose output |
 | [LeRobot recording](docs/recording.md) | Optional recording environment, YAML settings, episode controls and stored features |
-| [보관 mesh](assets/meshes/README.md) | mesh 출처·원본/최적화 파일·catalog |
+| [Bundled meshes](assets/meshes/README.md) | Mesh origin, original/optimized files and catalog |
 
 ```text
-grasp_workbench/    # 실행 진입점, worker, camera, model adapter, IPC, Qt UI
-config.yaml        # 공유 기본값
-examples/          # 개인 설정·선택적 robot adapter 예시
-third_party/       # 원본을 수정하지 않는 공식 submodule 7개
-assets/meshes/     # 기존 물체 mesh·catalog
-image/             # README 예시 이미지
-docs/              # 설치·사용·검증 상세 문서
-runs/              # 생성 asset·grasp cache·snapshot·dataset·로그: Git 제외
+grasp_workbench/    # entry point, workers, camera, model adapters, IPC, Qt UI
+config.yaml        # shared defaults
+examples/          # local config and optional robot adapter examples
+third_party/       # 7 official submodules, unmodified
+assets/meshes/     # bundled object meshes and catalog
+image/             # README example image
+docs/              # detailed setup, usage and verification docs
+runs/              # generated assets, grasp caches, snapshots, datasets, logs: Git-ignored
 ```
 
-각 기능은 독립 worker 프로세스로 실행합니다. worker 사이의 이미지·mask·mesh·pose·요청/결과는 iceoryx2로 전달합니다.
-원본 SDK와 upstream 저장소를 수정하거나 특정 FFW·ROS 환경을 필수로 연결하지 않습니다.
+Each function runs as an independent worker process. Images, masks, meshes, poses and requests/results between workers go over iceoryx2.
+The original SDKs and upstream repositories are not modified, and no specific FFW or ROS environment is required.
 
 <a id="verification"></a>
-## 7. 검증 범위
+## 7. Verification
 
-로컬 검증 환경은 **Linux x86_64·Python 3.12.3**이며, 최근 전체 **1068개 테스트·Ruff 검사**를 통과했습니다.
-새 PC의 전체 설치·하드웨어 실행이 검증되었다는 뜻은 아닙니다.
+The local verification environment is **Linux x86_64 with Python 3.12.3**; the latest full run passed **1153 tests (2 optional-dependency tests skipped) and Ruff checks**.
+This does not mean a full installation or hardware run on a new PC has been verified.
 
 ```bash
 python -m pytest tests -q
-# 선택 사항: Ruff는 별도로 설치합니다.
+# Optional: install Ruff separately.
 python -m pip install ruff
 ruff check grasp_workbench tests
 ```
 
-- 자동 테스트는 모의 SDK·모델과 실제 독립 프로세스·iceoryx2·offscreen UI를 함께 사용합니다.
-- 실제 모델을 사용한 저장 RGB-D 재생 검증과 실제 카메라 검증은 [이력](docs/verification.md)에 구분했습니다.
-- **Claude 실서비스 호출, monocular·texture 실추론, 실측 로봇 hand FK는 미검증**입니다.
-  Claude는 실제 SDK의 오프라인 모의 HTTP 직렬화·파싱까지 확인했습니다.
-- IK는 pregrasp/grasp **endpoint 도달 가능성 확인**입니다. 장면 충돌·경로 계획·실물 grasp 성공을 보장하지 않습니다.
+- The automated tests combine mock SDKs and models with real independent processes, iceoryx2 and an offscreen UI.
+- Replay checks with real models on saved RGB-D and checks with a real camera are listed separately in the [history](docs/verification.md).
+- **Live Claude service calls, real monocular and texture inference, and measured robot hand FK are not verified.**
+  For Claude, the real SDK's offline mock HTTP serialization and parsing were checked.
+- IK only checks **whether the pregrasp/grasp endpoints are reachable**. It does not guarantee freedom from scene collisions, a planned path, or a successful real grasp.
 
 <a id="sharing"></a>
-## 8. 공유 시 주의사항
+## 8. Notes on sharing
 
-- `.secrets/`, `.env*`, `config.local.yaml`, CLI 인증자료, `.venv*/`, 가중치와 `runs/`는 공유하지 않습니다.
-  `.gitignore`는 폴더 전체 ZIP에 적용되지 않으며, 이미 추적된 파일·과거 커밋도 별도로 확인합니다.
-- 이 저장소 자체의 라이선스는 아직 미정이며 루트 `LICENSE`가 없습니다.
-  보관한 45개 mesh의 재배포 권한과 각 upstream 소스·가중치 조건은 별도로 확인해야 합니다.
-- 이 예제는 **로봇 제어·이동, 학습, policy 실행, trajectory·장면 충돌 검사**를 포함하지 않습니다.
+- Do not share `.secrets/`, `.env*`, `config.local.yaml`, CLI credentials, `.venv*/`, weights or `runs/`.
+  `.gitignore` does not apply to a ZIP of the whole folder; check already tracked files and past commits separately.
+- The code and the 45 bundled meshes in this repository are under the MIT License ([LICENSE](LICENSE)). The bundled meshes come from the author's own object library.
+  The `third_party/` submodules and each model's weights follow their upstream licenses.
+- This example does **not** include robot control or motion, training, policy execution, or trajectory and scene collision checks.
+
+<a id="status"></a>
+## 9. Status
+
+Development version `0.1.0`; features have been added and verified one at a time since 2026-10-20. The most recent additions are
+the AprilCube alternative mode and LeRobot recording; the dated verification log is in [Verification history](docs/verification.md).

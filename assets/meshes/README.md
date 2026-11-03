@@ -1,7 +1,7 @@
 # Bundled Mesh Library
 
-Copied from the object library in `ffw_object_pose_system/assets`. The source
-files and all mesh bytes are unchanged.
+Copied from the author's object library. The source files and all mesh bytes
+are unchanged.
 
 - `ffw_objects/<asset_name>/object.glb`: original meshes for 21 object assets.
 - `ffw_objects/<asset_name>/object.optimized.glb`: existing optimized meshes.
